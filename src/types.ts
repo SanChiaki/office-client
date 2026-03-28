@@ -17,4 +17,5 @@ export interface SelectionContext {
   address: string;
   rowCount: number;
   columnCount: number;
+  hasHeaders: boolean;
 }

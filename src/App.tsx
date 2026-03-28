@@ -4,10 +4,11 @@ import { MessageThread } from "./components/MessageThread";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { SelectionBadge } from "./components/SelectionBadge";
 import { SessionSidebar } from "./components/SessionSidebar";
+import { subscribeToSelectionChanges } from "./excel/selectionContextService";
 import { createSessionStore } from "./state/sessionStore";
 import { createSettingsStore } from "./state/settingsStore";
 import type { SettingsState } from "./state/settingsStore";
-import type { ChatMessage } from "./types";
+import type { ChatMessage, SelectionContext } from "./types";
 
 const initialMessages: ChatMessage[] = [
   {
@@ -25,6 +26,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  const [selection, setSelection] = useState<SelectionContext | null>(null);
 
   const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
 
@@ -51,6 +53,12 @@ export default function App() {
   useEffect(() => {
     setMessages(activeSession?.messages.length ? activeSession.messages : initialMessages);
   }, [activeSessionId, activeSession]);
+
+  useEffect(() => {
+    return subscribeToSelectionChanges((nextSelection) => {
+      setSelection(nextSelection);
+    });
+  }, []);
 
   function handleCreateSession() {
     sessionStore.createSession();
@@ -120,7 +128,7 @@ export default function App() {
           />
         ) : null}
         <MessageThread messages={messages} />
-        <SelectionBadge selection={null} />
+        <SelectionBadge selection={selection} />
         <Composer value={draft} onChange={setDraft} onSubmit={handleSubmit} />
       </section>
     </main>

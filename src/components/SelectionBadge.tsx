@@ -7,7 +7,8 @@ export function SelectionBadge({ selection }: { selection: SelectionContext | nu
 
   return (
     <div className="selection-badge">
-      当前选区：{selection.sheetName}!{selection.address} 行 {selection.rowCount} 列 {selection.columnCount}
+      当前选区：{selection.sheetName}!{selection.address} ｜ {selection.rowCount} 行 ｜ {selection.columnCount} 列
+      {selection.hasHeaders ? " ｜ 已识别表头" : ""}
     </div>
   );
 }
