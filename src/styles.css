@@ -85,6 +85,7 @@ button {
 }
 
 .chat-panel {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 12px;
@@ -117,12 +118,20 @@ button {
 }
 
 .settings-dialog {
+  position: absolute;
+  top: 72px;
+  right: 20px;
+  width: min(420px, calc(100% - 40px));
+  max-height: calc(100% - 104px);
+  overflow: auto;
+  z-index: 2;
   display: grid;
   gap: 12px;
   padding: 16px;
   border: 1px solid #d7dee8;
   border-radius: 8px;
   background: #f8fafc;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
 }
 
 .settings-dialog label {

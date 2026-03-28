@@ -14,7 +14,7 @@ export function SettingsDialog({
   const [model, setModel] = useState(initialValue.model);
 
   return (
-    <section className="settings-dialog" aria-label="Settings">
+    <section className="settings-dialog" role="dialog" aria-modal="true" aria-label="Settings">
       <label>
         API Key
         <input value={apiKey} onChange={(event) => setApiKey(event.target.value)} />

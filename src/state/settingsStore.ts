@@ -7,13 +7,22 @@ export interface SettingsState {
   model: string;
 }
 
+function normalizeSettings(value: Partial<SettingsState> | null | undefined): SettingsState {
+  return {
+    apiKey: typeof value?.apiKey === "string" ? value.apiKey : "",
+    model: typeof value?.model === "string" && value.model ? value.model : "gpt-4.1-mini",
+  };
+}
+
 export function createSettingsStore() {
   return {
     load(): SettingsState {
-      return getJson<SettingsState>(SETTINGS_KEY, {
-        apiKey: "",
-        model: "gpt-4.1-mini",
-      });
+      return normalizeSettings(
+        getJson<Partial<SettingsState>>(SETTINGS_KEY, {
+          apiKey: "",
+          model: "gpt-4.1-mini",
+        })
+      );
     },
     save(value: SettingsState) {
       setJson(SETTINGS_KEY, value);
