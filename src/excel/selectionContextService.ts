@@ -43,6 +43,7 @@ type OfficeDocument = {
 };
 
 type OfficeRuntime = {
+  onReady?: () => Promise<unknown> | void;
   context?: {
     document?: OfficeDocument;
   };
@@ -92,17 +93,11 @@ async function readCurrentSelection(): Promise<SelectionContext | null> {
 
 export function subscribeToSelectionChanges(onChange: (selection: SelectionContext) => void) {
   const office = (window as unknown as { Office?: OfficeRuntime }).Office;
-  const document = office?.context?.document;
-
-  if (!document?.addHandlerAsync || !document?.removeHandlerAsync) {
-    return () => {};
-  }
-
-  const addHandlerAsync = document.addHandlerAsync;
-  const removeHandlerAsync = document.removeHandlerAsync;
   let disposed = false;
+  let handler: (() => Promise<void> | void) | null = null;
+  let removeHandlerAsync: OfficeDocument["removeHandlerAsync"] | null = null;
 
-  const handler = async () => {
+  async function emitCurrentSelection() {
     try {
       const selection = await readCurrentSelection();
       if (!disposed && selection) {
@@ -111,12 +106,39 @@ export function subscribeToSelectionChanges(onChange: (selection: SelectionConte
     } catch {
       // Selection refresh is best-effort. Ignore runtime failures for now.
     }
-  };
+  }
 
-  addHandlerAsync("documentSelectionChanged", handler, () => {});
+  function register() {
+    if (disposed) {
+      return;
+    }
+
+    const document = (window as unknown as { Office?: OfficeRuntime }).Office?.context?.document;
+    if (!document?.addHandlerAsync || !document?.removeHandlerAsync) {
+      return;
+    }
+
+    removeHandlerAsync = document.removeHandlerAsync;
+    handler = async () => {
+      await emitCurrentSelection();
+    };
+
+    document.addHandlerAsync("documentSelectionChanged", handler, () => {
+      void emitCurrentSelection();
+    });
+  }
+
+  const ready = office?.onReady?.();
+  if (ready && typeof (ready as Promise<unknown>).then === "function") {
+    void (ready as Promise<unknown>).then(register).catch(() => {});
+  } else {
+    register();
+  }
 
   return () => {
     disposed = true;
-    removeHandlerAsync("documentSelectionChanged", { handler }, () => {});
+    if (handler && removeHandlerAsync) {
+      removeHandlerAsync("documentSelectionChanged", { handler }, () => {});
+    }
   };
 }

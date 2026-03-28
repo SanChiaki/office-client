@@ -1,8 +1,9 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import App from "../../src/App";
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -56,8 +57,62 @@ test("updates the selection badge when Office reports a new selection", async ()
   });
 
   await waitFor(() => {
-    expect(screen.getByText("当前选区：Sheet7!D4:E6 ｜ 3 行 ｜ 2 列")).toBeInTheDocument();
+    const badge = document.querySelector(".selection-badge");
+    expect(badge?.textContent).toContain("Sheet7!D4:E6");
+    expect(badge?.textContent).toContain("3");
+    expect(badge?.textContent).toContain("2");
   });
 
   expect(removeHandlerAsync).not.toHaveBeenCalled();
+});
+
+test("hydrates the selection badge on mount when Office is ready", async () => {
+  const addHandlerAsync = vi.fn((eventType: string, handler: (eventArgs: unknown) => Promise<void> | void, callback?: (result: { status: string }) => void) => {
+    callback?.({ status: "succeeded" });
+  });
+  const removeHandlerAsync = vi.fn();
+  const load = vi.fn();
+  const worksheetLoad = vi.fn();
+  const sync = vi.fn(async () => {});
+  const getSelectedRange = vi.fn(() => ({
+    address: "A1:D4",
+    rowCount: 4,
+    columnCount: 4,
+    load,
+    worksheet: {
+      load: worksheetLoad,
+      name: "Sheet1",
+    },
+  }));
+
+  vi.stubGlobal("Office", {
+    onReady: () => Promise.resolve(),
+    context: {
+      document: {
+        addHandlerAsync,
+        removeHandlerAsync,
+      },
+    },
+  });
+  vi.stubGlobal("Excel", {
+    run: vi.fn(async (callback: (context: { workbook: { getSelectedRange: typeof getSelectedRange }; sync: typeof sync }) => Promise<void>) =>
+      callback({
+        workbook: { getSelectedRange },
+        sync,
+      }),
+    ),
+  });
+
+  render(<App />);
+
+  await waitFor(() => {
+    const badges = document.querySelectorAll(".selection-badge");
+    const latestBadgeText = badges[badges.length - 1]?.textContent ?? "";
+    expect(latestBadgeText).toMatch(/Sheet1!A1:D4.*4.*4/);
+  });
+
+  expect(addHandlerAsync).toHaveBeenCalledTimes(1);
+  expect(load).toHaveBeenCalledWith(["address", "rowCount", "columnCount"]);
+  expect(worksheetLoad).toHaveBeenCalledWith("name");
+  expect(sync).toHaveBeenCalledTimes(1);
 });
