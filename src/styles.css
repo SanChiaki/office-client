@@ -1,0 +1,10 @@
+body {
+  margin: 0;
+  font-family: "Segoe UI", sans-serif;
+  background: #f4f7fb;
+  color: #1f2937;
+}
+
+.app-shell {
+  padding: 16px;
+}
