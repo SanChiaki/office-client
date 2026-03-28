@@ -4,6 +4,7 @@ import { MessageThread } from "./components/MessageThread";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { SelectionBadge } from "./components/SelectionBadge";
 import { SessionSidebar } from "./components/SessionSidebar";
+import { decideRoute } from "./agent/agentOrchestrator";
 import { subscribeToSelectionChanges } from "./excel/selectionContextService";
 import { createSessionStore } from "./state/sessionStore";
 import { createSettingsStore } from "./state/settingsStore";
@@ -90,6 +91,12 @@ export default function App() {
   function handleSubmit() {
     const content = draft.trim();
     if (!content) {
+      return;
+    }
+
+    const route = decideRoute(content);
+    if (route.mode !== "chat") {
+      setDraft("");
       return;
     }
 
