@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Composer } from "./components/Composer";
 import { MessageThread } from "./components/MessageThread";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { SelectionBadge } from "./components/SelectionBadge";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { createSessionStore } from "./state/sessionStore";
+import { createSettingsStore } from "./state/settingsStore";
+import type { SettingsState } from "./state/settingsStore";
 import type { ChatMessage } from "./types";
 
 const initialMessages: ChatMessage[] = [
@@ -16,7 +19,10 @@ const initialMessages: ChatMessage[] = [
 
 export default function App() {
   const sessionStore = useMemo(() => createSessionStore(), []);
+  const settingsStore = useMemo(() => createSettingsStore(), []);
   const [{ sessions, activeSessionId }, setSessionState] = useState(sessionStore.getState());
+  const [settings, setSettings] = useState(settingsStore.load());
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
 
@@ -62,6 +68,17 @@ export default function App() {
     refreshSessions();
   }
 
+  function handleOpenSettings() {
+    setSettings(settingsStore.load());
+    setIsSettingsOpen(true);
+  }
+
+  function handleSaveSettings(nextSettings: SettingsState) {
+    settingsStore.save(nextSettings);
+    setSettings(nextSettings);
+    setIsSettingsOpen(false);
+  }
+
   function handleSubmit() {
     const content = draft.trim();
     if (!content) {
@@ -91,7 +108,17 @@ export default function App() {
       <section className="chat-panel">
         <header className="chat-header">
           <h1>OfficeAgent</h1>
+          <button type="button" className="chat-header-action" onClick={handleOpenSettings}>
+            设置
+          </button>
         </header>
+        {isSettingsOpen ? (
+          <SettingsDialog
+            initialValue={settings}
+            onSave={handleSaveSettings}
+            onClose={() => setIsSettingsOpen(false)}
+          />
+        ) : null}
         <MessageThread messages={messages} />
         <SelectionBadge selection={null} />
         <Composer value={draft} onChange={setDraft} onSubmit={handleSubmit} />

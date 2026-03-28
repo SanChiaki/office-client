@@ -101,6 +101,49 @@ button {
   font-weight: 600;
 }
 
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-header-action {
+  border: 1px solid #c9d2df;
+  border-radius: 6px;
+  padding: 8px 12px;
+  background: #ffffff;
+  color: #1f2937;
+}
+
+.settings-dialog {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.settings-dialog label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.settings-dialog input {
+  border: 1px solid #c9d2df;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #ffffff;
+  color: #1f2937;
+}
+
+.settings-dialog-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .message-thread {
   min-height: 0;
   overflow: auto;
