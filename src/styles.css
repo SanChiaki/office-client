@@ -86,9 +86,11 @@ button {
 
 .chat-panel {
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 12px;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   padding: 20px;
   background: #ffffff;
 }
@@ -100,7 +102,8 @@ button {
 }
 
 .message-thread {
-  min-height: 280px;
+  min-height: 0;
+  overflow: auto;
   padding: 16px;
   border: 1px solid #d7dee8;
   border-radius: 8px;
@@ -166,4 +169,23 @@ button {
 .confirmation-actions {
   display: flex;
   gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .session-sidebar {
+    padding: 12px;
+    border-bottom: 1px solid #d5dbe4;
+  }
+
+  .chat-panel {
+    padding: 12px;
+  }
+
+  .message-thread {
+    padding: 12px;
+  }
 }

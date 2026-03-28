@@ -1,6 +1,6 @@
 interface SessionSidebarProps {
   sessions: Array<{ id: string; title: string }>;
-  activeSessionId: string;
+  activeSessionId?: string;
   onCreateSession(): void;
   onSelectSession(id: string): void;
   onDeleteSession(id: string): void;

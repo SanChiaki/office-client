@@ -20,7 +20,6 @@ export default function App() {
     <main className="layout">
       <SessionSidebar
         sessions={[]}
-        activeSessionId="default"
         onCreateSession={() => {}}
         onSelectSession={() => {}}
         onDeleteSession={() => {}}
