@@ -1,21 +1,19 @@
 interface ConfirmationCardProps {
-  title: string;
-  detail: string;
+  summary: string;
   onConfirm(): void;
   onCancel(): void;
 }
 
-export function ConfirmationCard({ title, detail, onConfirm, onCancel }: ConfirmationCardProps) {
+export function ConfirmationCard({ summary, onConfirm, onCancel }: ConfirmationCardProps) {
   return (
     <article className="confirmation-card">
-      <h2>{title}</h2>
-      <p>{detail}</p>
+      <p>{summary}</p>
       <div className="confirmation-actions">
-        <button type="button" onClick={onCancel}>
-          取消
-        </button>
         <button type="button" onClick={onConfirm}>
-          确认
+          {"\u786e\u8ba4"}
+        </button>
+        <button type="button" onClick={onCancel}>
+          {"\u53d6\u6d88"}
         </button>
       </div>
     </article>
