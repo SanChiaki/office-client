@@ -1,4 +1,5 @@
 import type { CommandEnvelope } from "../agent/commandSchema";
+import { commandEnvelopeSchema } from "../agent/commandSchema";
 
 export async function requestCommandEnvelope(apiKey: string, payload: unknown): Promise<CommandEnvelope> {
   const response = await fetch("https://api.example.com/agent", {
@@ -10,5 +11,9 @@ export async function requestCommandEnvelope(apiKey: string, payload: unknown): 
     body: JSON.stringify(payload),
   });
 
-  return response.json();
+  if (!response.ok) {
+    throw new Error(`Request failed with status ${response.status}`);
+  }
+
+  return commandEnvelopeSchema.parse(await response.json());
 }

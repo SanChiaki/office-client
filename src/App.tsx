@@ -96,7 +96,6 @@ export default function App() {
 
     const route = decideRoute(content);
     if (route.mode !== "chat") {
-      setDraft("");
       return;
     }
 

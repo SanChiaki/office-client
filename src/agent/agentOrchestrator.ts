@@ -10,7 +10,7 @@ export type RouteDecision =
 export function decideRoute(input: string): RouteDecision {
   const trimmed = input.trim();
 
-  if (trimmed.startsWith("/upload_data")) {
+  if (/^\/upload_data(?:$|\s)/.test(trimmed)) {
     return {
       mode: "skill",
       skillName: "upload_data",
