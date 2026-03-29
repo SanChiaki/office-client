@@ -49,6 +49,8 @@ namespace OfficeAgent.Infrastructure.Tests
             Assert.Equal("secret-token", handler.LastRequest.Headers.Authorization?.Parameter);
             Assert.Contains("Create a summary sheet", handler.LastBody, StringComparison.Ordinal);
             Assert.Contains("gpt-5-mini", handler.LastBody, StringComparison.Ordinal);
+            Assert.Contains("\"type\":\"json_object\"", handler.LastBody, StringComparison.Ordinal);
+            Assert.DoesNotContain("json_schema", handler.LastBody, StringComparison.Ordinal);
             Assert.Equal("{\"mode\":\"message\",\"assistantMessage\":\"ok\"}", response);
         }
 

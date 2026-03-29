@@ -74,10 +74,7 @@ namespace OfficeAgent.Infrastructure.Http
                 {
                     format = new
                     {
-                        type = "json_schema",
-                        name = "office_agent_planner_response",
-                        strict = true,
-                        schema = BuildPlannerResponseSchema(),
+                        type = "json_object",
                     },
                 },
             });
@@ -171,7 +168,9 @@ namespace OfficeAgent.Infrastructure.Http
         private static string BuildPlannerInstructions()
         {
             return "You are OfficeAgent's planner. "
-                + "Return exactly one JSON object that matches the provided schema. "
+                + "Return exactly one JSON object and no markdown. "
+                + "Always include the keys mode, assistantMessage, step, and plan. "
+                + "Use null for step or plan when they do not apply. "
                 + "assistantMessage should be concise and use the user's language when possible. "
                 + "Supported modes are message, read_step, and plan. "
                 + "Use message when no Excel action is needed or the request is unsupported. "
@@ -187,91 +186,10 @@ namespace OfficeAgent.Infrastructure.Http
                 + "For skill.upload_data use arg userInput and preserve the user's upload intent. "
                 + "Use the provided selection metadata, headers, sample rows, and prior observations. "
                 + "Only request read_step when the summary is insufficient. "
+                + "When mode=read_step, set step to {\"type\":\"excel.readSelectionTable\",\"args\":{}} and plan to null. "
+                + "When mode=plan, set plan.summary and plan.steps, and set step to null. "
+                + "When mode=message, set both step and plan to null. "
                 + "If the request cannot be completed safely with the supported actions, answer with mode=message.";
-        }
-
-        private static JObject BuildPlannerResponseSchema()
-        {
-            return JObject.FromObject(new
-            {
-                type = "object",
-                additionalProperties = false,
-                required = new[] { "mode", "assistantMessage" },
-                properties = new
-                {
-                    mode = new
-                    {
-                        type = "string",
-                        @enum = new[] { "message", "read_step", "plan" },
-                    },
-                    assistantMessage = new
-                    {
-                        type = "string",
-                    },
-                    step = new
-                    {
-                        type = "object",
-                        additionalProperties = false,
-                        required = new[] { "type", "args" },
-                        properties = new
-                        {
-                            type = new
-                            {
-                                type = "string",
-                                @enum = new[] { "excel.readSelectionTable" },
-                            },
-                            args = new
-                            {
-                                type = "object",
-                                additionalProperties = false,
-                            },
-                        },
-                    },
-                    plan = new
-                    {
-                        type = "object",
-                        additionalProperties = false,
-                        required = new[] { "summary", "steps" },
-                        properties = new
-                        {
-                            summary = new
-                            {
-                                type = "string",
-                            },
-                            steps = new
-                            {
-                                type = "array",
-                                minItems = 1,
-                                items = new
-                                {
-                                    type = "object",
-                                    additionalProperties = false,
-                                    required = new[] { "type", "args" },
-                                    properties = new
-                                    {
-                                        type = new
-                                        {
-                                            type = "string",
-                                            @enum = new[]
-                                            {
-                                                "excel.writeRange",
-                                                "excel.addWorksheet",
-                                                "excel.renameWorksheet",
-                                                "excel.deleteWorksheet",
-                                                "skill.upload_data",
-                                            },
-                                        },
-                                        args = new
-                                        {
-                                            type = "object",
-                                        },
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-            });
         }
 
         private static string ExtractResponsesText(string responseBody)
