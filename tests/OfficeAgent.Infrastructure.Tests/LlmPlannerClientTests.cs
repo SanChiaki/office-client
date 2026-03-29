@@ -16,7 +16,18 @@ namespace OfficeAgent.Infrastructure.Tests
         {
             var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("{\"mode\":\"message\",\"assistantMessage\":\"ok\"}"),
+                Content = new StringContent(
+                    "{"
+                    + "\"status\":\"completed\","
+                    + "\"output\":[{"
+                    + "\"type\":\"message\","
+                    + "\"role\":\"assistant\","
+                    + "\"content\":[{"
+                    + "\"type\":\"output_text\","
+                    + "\"text\":\"{\\\"mode\\\":\\\"message\\\",\\\"assistantMessage\\\":\\\"ok\\\"}\""
+                    + "}]"
+                    + "}]"
+                    + "}"),
             });
             var client = new LlmPlannerClient(
                 new HttpClient(handler),
@@ -33,7 +44,7 @@ namespace OfficeAgent.Infrastructure.Tests
                 UserInput = "Create a summary sheet",
             });
 
-            Assert.Equal("https://api.internal.example/planner", handler.LastRequest.RequestUri.ToString());
+            Assert.Equal("https://api.internal.example/v1/responses", handler.LastRequest.RequestUri.ToString());
             Assert.Equal("Bearer", handler.LastRequest.Headers.Authorization?.Scheme);
             Assert.Equal("secret-token", handler.LastRequest.Headers.Authorization?.Parameter);
             Assert.Contains("Create a summary sheet", handler.LastBody, StringComparison.Ordinal);
@@ -46,7 +57,18 @@ namespace OfficeAgent.Infrastructure.Tests
         {
             var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("{\"mode\":\"message\",\"assistantMessage\":\"ok\"}"),
+                Content = new StringContent(
+                    "{"
+                    + "\"status\":\"completed\","
+                    + "\"output\":[{"
+                    + "\"type\":\"message\","
+                    + "\"role\":\"assistant\","
+                    + "\"content\":[{"
+                    + "\"type\":\"output_text\","
+                    + "\"text\":\"{\\\"mode\\\":\\\"message\\\",\\\"assistantMessage\\\":\\\"ok\\\"}\""
+                    + "}]"
+                    + "}]"
+                    + "}"),
             });
             var client = new LlmPlannerClient(
                 new HttpClient(handler),
@@ -63,7 +85,45 @@ namespace OfficeAgent.Infrastructure.Tests
                 UserInput = "Create a summary sheet",
             });
 
-            Assert.Equal("https://api.internal.example/v1/planner", handler.LastRequest.RequestUri.ToString());
+            Assert.Equal("https://api.internal.example/v1/responses", handler.LastRequest.RequestUri.ToString());
+        }
+
+        [Fact]
+        public void CompleteFallsBackToTheLegacyPlannerEndpointWhenResponsesApiIsUnavailable()
+        {
+            var handler = new RecordingHandler(request =>
+            {
+                if (request.RequestUri.ToString() == "https://api.internal.example/v1/responses")
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound)
+                    {
+                        Content = new StringContent("{\"error\":{\"message\":\"not found\"}}"),
+                    };
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"mode\":\"message\",\"assistantMessage\":\"ok\"}"),
+                };
+            });
+            var client = new LlmPlannerClient(
+                new HttpClient(handler),
+                () => new AppSettings
+                {
+                    ApiKey = "secret-token",
+                    BaseUrl = "https://api.internal.example",
+                    Model = "gpt-5-mini",
+                });
+
+            var response = client.Complete(new PlannerRequest
+            {
+                SessionId = "session-1",
+                UserInput = "Create a summary sheet",
+            });
+
+            Assert.Equal(2, handler.CallCount);
+            Assert.Equal("https://api.internal.example/planner", handler.LastRequest.RequestUri.ToString());
+            Assert.Equal("{\"mode\":\"message\",\"assistantMessage\":\"ok\"}", response);
         }
 
         [Fact]
