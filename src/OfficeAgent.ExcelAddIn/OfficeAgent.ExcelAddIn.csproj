@@ -16,7 +16,11 @@
     <BootstrapperComponentsLocation>HomeSite</BootstrapperComponentsLocation>
     <ResolveComReferenceSilent>true</ResolveComReferenceSilent>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">17.0</VisualStudioVersion>
-    <VSToolsPath Condition="'$(VSToolsPath)' == ''">$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
+    <VSToolsPath Condition="'$(VSToolsPath)' == '' and Exists('$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)')">$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
+    <VSToolsPath Condition="'$(VSToolsPath)' == '' and Exists('$(ProgramFiles)\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)')">$(ProgramFiles)\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
+    <VSToolsPath Condition="'$(VSToolsPath)' == '' and Exists('$(ProgramFiles)\Microsoft Visual Studio\2022\Professional\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)')">$(ProgramFiles)\Microsoft Visual Studio\2022\Professional\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
+    <VSToolsPath Condition="'$(VSToolsPath)' == '' and Exists('$(ProgramFiles)\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)')">$(ProgramFiles)\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
+    <VSToolsPath Condition="'$(VSToolsPath)' == '' and Exists('$(ProgramFiles)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)')">$(ProgramFiles)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
     <LangVersion>latest</LangVersion>
     <SignManifests>true</SignManifests>
     <ManifestCertificateThumbprint>F8C5873ED3D744330E5E20F2E3DC275C09D97EB1</ManifestCertificateThumbprint>
@@ -52,6 +56,11 @@
     <DefineConstants>$(DefineConstants);TRACE</DefineConstants>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OfficeAgent.Core\OfficeAgent.Core.csproj" />
+    <ProjectReference Include="..\OfficeAgent.Infrastructure\OfficeAgent.Infrastructure.csproj" />
+  </ItemGroup>
 
   <ItemGroup>
     <Reference Include="Accessibility" />

@@ -9,6 +9,12 @@ export interface BridgeErrorPayload {
   message: string;
 }
 
+export interface AppSettings {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+}
+
 export interface BridgeResponseEnvelope<TPayload = unknown> {
   type: string;
   requestId: string;

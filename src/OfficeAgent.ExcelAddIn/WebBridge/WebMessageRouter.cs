@@ -3,25 +3,43 @@ using System.Collections.Generic;
 using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
+using OfficeAgent.Core.Models;
+using OfficeAgent.Infrastructure.Storage;
 
 namespace OfficeAgent.ExcelAddIn.WebBridge
 {
     internal sealed class WebMessageRouter
     {
+        private static readonly JsonSerializerSettings SerializerSettings = new JsonSerializerSettings
+        {
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
+            NullValueHandling = NullValueHandling.Ignore,
+        };
+
         private readonly HashSet<string> allowedTypes = new HashSet<string>(StringComparer.Ordinal)
         {
             BridgeMessageTypes.Ping,
+            BridgeMessageTypes.GetSettings,
             BridgeMessageTypes.GetSelectionContext,
             BridgeMessageTypes.GetSessions,
             BridgeMessageTypes.SaveSettings,
             BridgeMessageTypes.ExecuteExcelCommand,
             BridgeMessageTypes.RunSkill,
         };
+        private readonly FileSessionStore sessionStore;
+        private readonly FileSettingsStore settingsStore;
+
+        public WebMessageRouter(FileSessionStore sessionStore, FileSettingsStore settingsStore)
+        {
+            this.sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
+            this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
+        }
 
         public string Route(string rawRequestJson)
         {
             var response = RouteInternal(rawRequestJson);
-            return JsonConvert.SerializeObject(response);
+            return JsonConvert.SerializeObject(response, SerializerSettings);
         }
 
         private WebMessageResponse RouteInternal(string rawRequestJson)
@@ -81,9 +99,31 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                             Host = "OfficeAgent.ExcelAddIn",
                             Version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "dev",
                         });
-                case BridgeMessageTypes.GetSelectionContext:
+                case BridgeMessageTypes.GetSettings:
+                    if (HasUnexpectedPayload(request.Payload))
+                    {
+                        return Error(
+                            request.Type,
+                            request.RequestId,
+                            code: "malformed_payload",
+                            message: "bridge.getSettings does not accept a payload.");
+                    }
+
+                    return Success(request.Type, request.RequestId, settingsStore.Load());
                 case BridgeMessageTypes.GetSessions:
+                    if (HasUnexpectedPayload(request.Payload))
+                    {
+                        return Error(
+                            request.Type,
+                            request.RequestId,
+                            code: "malformed_payload",
+                            message: "bridge.getSessions does not accept a payload.");
+                    }
+
+                    return Success(request.Type, request.RequestId, sessionStore.Load());
                 case BridgeMessageTypes.SaveSettings:
+                    return SaveSettings(request);
+                case BridgeMessageTypes.GetSelectionContext:
                 case BridgeMessageTypes.ExecuteExcelCommand:
                 case BridgeMessageTypes.RunSkill:
                     return Error(
@@ -100,6 +140,47 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
             }
         }
 
+        private WebMessageResponse SaveSettings(WebMessageRequest request)
+        {
+            if (!HasValidSettingsPayload(request.Payload))
+            {
+                return Error(
+                    request.Type,
+                    request.RequestId,
+                    code: "malformed_payload",
+                    message: "bridge.saveSettings requires a settings payload.");
+            }
+
+            try
+            {
+                var settings = request.Payload.ToObject<AppSettings>() ?? new AppSettings();
+                settingsStore.Save(settings);
+                return Success(request.Type, request.RequestId, settingsStore.Load());
+            }
+            catch (JsonException)
+            {
+                return Error(
+                    request.Type,
+                    request.RequestId,
+                    code: "malformed_payload",
+                    message: "bridge.saveSettings requires a valid settings payload.");
+            }
+        }
+
+        private static bool HasValidSettingsPayload(JToken payload)
+        {
+            if (payload == null || payload.Type != JTokenType.Object || !payload.HasValues)
+            {
+                return false;
+            }
+
+            var payloadObject = (JObject)payload;
+            return IsStringToken(payloadObject["apiKey"]) &&
+                   IsStringToken(payloadObject["baseUrl"]) &&
+                   IsStringToken(payloadObject["model"]) &&
+                   payloadObject.Count >= 3;
+        }
+
         private static bool HasUnexpectedPayload(JToken payload)
         {
             if (payload == null || payload.Type == JTokenType.Null)
@@ -107,7 +188,12 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                 return false;
             }
 
-            return payload.Type != JTokenType.Object || payload.HasValues;
+            return true;
+        }
+
+        private static bool IsStringToken(JToken token)
+        {
+            return token != null && token.Type == JTokenType.String;
         }
 
         private static WebMessageResponse Success(string type, string requestId, object payload)

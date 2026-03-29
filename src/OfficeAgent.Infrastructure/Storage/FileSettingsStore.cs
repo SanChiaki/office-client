@@ -1,0 +1,91 @@
+using System;
+using System.IO;
+using System.Security.Cryptography;
+using Newtonsoft.Json;
+using OfficeAgent.Core.Models;
+using OfficeAgent.Infrastructure.Security;
+
+namespace OfficeAgent.Infrastructure.Storage
+{
+    public sealed class FileSettingsStore
+    {
+        private readonly string settingsPath;
+        private readonly DpapiSecretProtector secretProtector;
+
+        public FileSettingsStore(string settingsPath, DpapiSecretProtector secretProtector)
+        {
+            this.settingsPath = settingsPath ?? throw new ArgumentNullException(nameof(settingsPath));
+            this.secretProtector = secretProtector ?? throw new ArgumentNullException(nameof(secretProtector));
+        }
+
+        public AppSettings Load()
+        {
+            if (!File.Exists(settingsPath))
+            {
+                return new AppSettings();
+            }
+
+            try
+            {
+                var persisted = JsonConvert.DeserializeObject<PersistedSettings>(File.ReadAllText(settingsPath));
+                if (persisted == null)
+                {
+                    return new AppSettings();
+                }
+
+                var settings = new AppSettings
+                {
+                    ApiKey = string.Empty,
+                    BaseUrl = string.IsNullOrWhiteSpace(persisted.BaseUrl) ? "https://api.example.com" : persisted.BaseUrl,
+                    Model = string.IsNullOrWhiteSpace(persisted.Model) ? "gpt-5-mini" : persisted.Model,
+                };
+
+                try
+                {
+                    settings.ApiKey = secretProtector.Unprotect(persisted.EncryptedApiKey);
+                }
+                catch (FormatException)
+                {
+                    settings.ApiKey = string.Empty;
+                }
+                catch (CryptographicException)
+                {
+                    settings.ApiKey = string.Empty;
+                }
+
+                return settings;
+            }
+            catch (JsonException)
+            {
+                return new AppSettings();
+            }
+        }
+
+        public void Save(AppSettings settings)
+        {
+            var persisted = new PersistedSettings
+            {
+                EncryptedApiKey = secretProtector.Protect(settings?.ApiKey ?? string.Empty),
+                BaseUrl = string.IsNullOrWhiteSpace(settings?.BaseUrl) ? "https://api.example.com" : settings.BaseUrl,
+                Model = string.IsNullOrWhiteSpace(settings?.Model) ? "gpt-5-mini" : settings.Model,
+            };
+
+            var directoryPath = Path.GetDirectoryName(settingsPath);
+            if (!string.IsNullOrEmpty(directoryPath))
+            {
+                Directory.CreateDirectory(directoryPath);
+            }
+
+            File.WriteAllText(settingsPath, JsonConvert.SerializeObject(persisted, Formatting.Indented));
+        }
+
+        private sealed class PersistedSettings
+        {
+            public string EncryptedApiKey { get; set; } = string.Empty;
+
+            public string BaseUrl { get; set; } = string.Empty;
+
+            public string Model { get; set; } = string.Empty;
+        }
+    }
+}

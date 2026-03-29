@@ -3,6 +3,7 @@ using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using OfficeAgent.ExcelAddIn.WebBridge;
+using OfficeAgent.Infrastructure.Storage;
 
 namespace OfficeAgent.ExcelAddIn.TaskPane
 {
@@ -12,7 +13,7 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
         private readonly WebViewBootstrapper bootstrapper;
         private bool isInitialized;
 
-        public TaskPaneHostControl()
+        public TaskPaneHostControl(FileSessionStore sessionStore, FileSettingsStore settingsStore)
         {
             Dock = DockStyle.Fill;
 
@@ -22,7 +23,7 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
             };
             Controls.Add(webView);
 
-            bootstrapper = new WebViewBootstrapper(webView);
+            bootstrapper = new WebViewBootstrapper(webView, sessionStore, settingsStore);
             Load += TaskPaneHostControl_Load;
         }
 

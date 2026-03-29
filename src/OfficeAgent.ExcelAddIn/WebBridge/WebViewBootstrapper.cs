@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
+using OfficeAgent.Infrastructure.Storage;
 
 namespace OfficeAgent.ExcelAddIn.WebBridge
 {
@@ -12,10 +13,10 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
         private readonly WebView2 webView;
         private readonly WebMessageRouter messageRouter;
 
-        public WebViewBootstrapper(WebView2 webView)
+        public WebViewBootstrapper(WebView2 webView, FileSessionStore sessionStore, FileSettingsStore settingsStore)
         {
             this.webView = webView;
-            messageRouter = new WebMessageRouter();
+            messageRouter = new WebMessageRouter(sessionStore, settingsStore);
         }
 
         public async Task InitializeAsync()

@@ -75,4 +75,31 @@ describe('NativeBridge', () => {
       version: 'dev',
     });
   });
+
+  it('sends getSettings requests through the structured bridge contract', async () => {
+    const webView = createMockWebView();
+    const bridge = new NativeBridge(webView);
+
+    const pending = bridge.getSettings();
+    const [request] = webView.postedMessages as Array<{ type: string; requestId: string }>;
+
+    expect(request.type).toBe('bridge.getSettings');
+
+    webView.dispatch({
+      type: 'bridge.getSettings',
+      requestId: request.requestId,
+      ok: true,
+      payload: {
+        apiKey: '',
+        baseUrl: 'https://api.example.com',
+        model: 'gpt-5-mini',
+      },
+    });
+
+    await expect(pending).resolves.toEqual({
+      apiKey: '',
+      baseUrl: 'https://api.example.com',
+      model: 'gpt-5-mini',
+    });
+  });
 });

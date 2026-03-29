@@ -6,6 +6,7 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
     internal static class BridgeMessageTypes
     {
         public const string Ping = "bridge.ping";
+        public const string GetSettings = "bridge.getSettings";
         public const string GetSelectionContext = "bridge.getSelectionContext";
         public const string GetSessions = "bridge.getSessions";
         public const string SaveSettings = "bridge.saveSettings";

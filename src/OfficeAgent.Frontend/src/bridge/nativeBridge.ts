@@ -1,4 +1,5 @@
 import type {
+  AppSettings,
   BridgeErrorPayload,
   BridgeRequestEnvelope,
   BridgeResponseEnvelope,
@@ -9,6 +10,7 @@ import type {
 
 const BRIDGE_TYPES = {
   ping: 'bridge.ping',
+  getSettings: 'bridge.getSettings',
   getSelectionContext: 'bridge.getSelectionContext',
   getSessions: 'bridge.getSessions',
   saveSettings: 'bridge.saveSettings',
@@ -72,6 +74,10 @@ export class NativeBridge {
 
   ping() {
     return this.invoke<void, PingPayload>(BRIDGE_TYPES.ping);
+  }
+
+  getSettings() {
+    return this.invoke<void, AppSettings>(BRIDGE_TYPES.getSettings);
   }
 
   getSelectionContext() {
