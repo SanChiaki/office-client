@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a Windows Excel VSTO add-in that provides a chat-based OfficeAgent task pane, live Excel context, local session persistence, external API access, and an `upload_data` skill with confirmation.
+**Goal:** Build a Windows Excel VSTO add-in that uses `WebView2 + React` for the task pane UI, supports local sessions and settings, reads live Excel context, executes Excel commands through native services, and ships an `upload_data` skill with confirmation.
 
-**Architecture:** Use a `VSTO Excel Add-in` as the host, expose a Ribbon button to open a `CustomTaskPane`, render the chat UI with WPF, and isolate business logic from Excel interop through service interfaces. Store sessions locally on disk, protect secrets with DPAPI, and package the add-in as an MSI for enterprise distribution.
+**Architecture:** Use `VSTO` for the Excel host, Ribbon, task pane lifecycle, Excel Interop, local storage, and enterprise installation. Use `WebView2` to host a packaged React frontend inside the task pane, and define a typed JS/.NET bridge for all UI-to-native interactions. Keep business logic in Core services so the frontend remains a presentation layer and Excel COM access stays isolated in Infrastructure.
 
-**Tech Stack:** C#, .NET Framework 4.8, VSTO, Excel Interop, WPF, WinForms `CustomTaskPane`, `HttpClient`, JSON file storage, DPAPI, MSTest or xUnit, MSI packaging
+**Tech Stack:** C#, .NET Framework 4.8, VSTO, Excel Interop, WinForms, WebView2, React, TypeScript, Vite, HttpClient, JSON file storage, DPAPI, MSI packaging
 
 ---
 
@@ -17,17 +17,17 @@
 - `src/OfficeAgent.ExcelAddIn/AgentRibbon.cs`
   Purpose: Ribbon tab/button to show or hide the task pane
 - `src/OfficeAgent.ExcelAddIn/TaskPane/TaskPaneHostControl.cs`
-  Purpose: WinForms host for the custom task pane
+  Purpose: WinForms `UserControl` that hosts WebView2
 - `src/OfficeAgent.ExcelAddIn/TaskPane/TaskPaneController.cs`
-  Purpose: create/show/hide/synchronize the pane
-- `src/OfficeAgent.DesktopUI/Views/ChatPaneView.xaml`
-  Purpose: main chat UI
-- `src/OfficeAgent.DesktopUI/ViewModels/ChatPaneViewModel.cs`
-  Purpose: message flow, selection display, confirm/cancel commands
-- `src/OfficeAgent.DesktopUI/ViewModels/SettingsViewModel.cs`
-  Purpose: API key, Base URL, model settings
+  Purpose: create/show/hide/synchronize the custom task pane
+- `src/OfficeAgent.ExcelAddIn/WebBridge/WebMessageEnvelope.cs`
+  Purpose: shared bridge request/response model
+- `src/OfficeAgent.ExcelAddIn/WebBridge/WebMessageRouter.cs`
+  Purpose: route web messages to native services
+- `src/OfficeAgent.ExcelAddIn/WebBridge/WebViewBootstrapper.cs`
+  Purpose: initialize WebView2, local content mapping, message wiring
 - `src/OfficeAgent.Core/Models/*.cs`
-  Purpose: session, message, selection, command, skill models
+  Purpose: session, message, selection, command, skill, preview models
 - `src/OfficeAgent.Core/Services/IAgentOrchestrator.cs`
   Purpose: orchestration contract
 - `src/OfficeAgent.Core/Services/IExcelContextService.cs`
@@ -60,35 +60,48 @@
   Purpose: JSON-backed settings persistence
 - `src/OfficeAgent.Infrastructure/Security/DpapiSecretProtector.cs`
   Purpose: user-scope encryption for API key
+- `src/OfficeAgent.Frontend/package.json`
+  Purpose: frontend scripts and dependencies
+- `src/OfficeAgent.Frontend/vite.config.ts`
+  Purpose: frontend build config
+- `src/OfficeAgent.Frontend/src/App.tsx`
+  Purpose: task pane React shell
+- `src/OfficeAgent.Frontend/src/bridge/nativeBridge.ts`
+  Purpose: typed wrapper over `window.chrome.webview`
+- `src/OfficeAgent.Frontend/src/components/*`
+  Purpose: sidebar, thread, composer, settings, confirmation UI
+- `src/OfficeAgent.Frontend/dist/*`
+  Purpose: packaged task pane static assets
 - `installer/OfficeAgent.Setup`
   Purpose: MSI packaging project
 - `tests/OfficeAgent.Core.Tests/*`
-  Purpose: logic, routing, confirmation, payload, persistence tests
+  Purpose: core logic, routing, confirmation, payload, persistence tests
 - `tests/OfficeAgent.Infrastructure.Tests/*`
   Purpose: file storage and HTTP tests
+- `tests/OfficeAgent.Frontend.Tests/*`
+  Purpose: frontend bridge and UI tests
 - `docs/vsto-manual-test-checklist.md`
   Purpose: Excel desktop + installer verification checklist
 
-## Task 1: Create the VSTO Solution Skeleton
+## Task 1: Create the VSTO + Frontend Monorepo Skeleton
 
 **Files:**
 - Create: `src/OfficeAgent.ExcelAddIn`
-- Create: `src/OfficeAgent.DesktopUI`
 - Create: `src/OfficeAgent.Core`
 - Create: `src/OfficeAgent.Infrastructure`
+- Create: `src/OfficeAgent.Frontend`
 - Create: `tests/OfficeAgent.Core.Tests`
+- Create: `tests/OfficeAgent.Frontend.Tests`
 
 - [ ] Create a new Excel VSTO Add-in solution targeting `.NET Framework 4.8`.
-- [ ] Add three class library projects: `OfficeAgent.Core`, `OfficeAgent.Infrastructure`, `OfficeAgent.DesktopUI`, all targeting `net48`.
-- [ ] Add a test project for pure logic and storage code.
-- [ ] Add project references:
-  - `OfficeAgent.ExcelAddIn` -> `OfficeAgent.Core`, `OfficeAgent.Infrastructure`, `OfficeAgent.DesktopUI`
-  - `OfficeAgent.Infrastructure` -> `OfficeAgent.Core`
-  - `OfficeAgent.DesktopUI` -> `OfficeAgent.Core`
+- [ ] Add class library projects for `OfficeAgent.Core` and `OfficeAgent.Infrastructure`, both targeting `net48`.
+- [ ] Create the React frontend workspace under `src/OfficeAgent.Frontend`.
+- [ ] Add a pure test project for core logic and storage code.
+- [ ] Add frontend test tooling for bridge/UI code.
 - [ ] Verify F5 can launch Excel with the empty add-in loaded.
-- [ ] Commit with message: `chore: scaffold vsto officeagent solution`
+- [ ] Commit with message: `chore: scaffold vsto and frontend solution`
 
-## Task 2: Add Ribbon and Custom Task Pane Host
+## Task 2: Add Ribbon and Task Pane Host Shell
 
 **Files:**
 - Create: `src/OfficeAgent.ExcelAddIn/AgentRibbon.cs`
@@ -98,33 +111,60 @@
 
 - [ ] Add a Ribbon tab/group/button named `OfficeAgent`.
 - [ ] Create `TaskPaneHostControl` as a WinForms `UserControl`.
-- [ ] In `ThisAddIn_Startup`, initialize a `TaskPaneController`.
+- [ ] In `ThisAddIn_Startup`, initialize a singleton `TaskPaneController`.
 - [ ] Make the Ribbon button show/hide the custom task pane.
-- [ ] Set a stable width and default dock position on the right.
-- [ ] Verify Excel can repeatedly open/close the pane without duplicate instances.
+- [ ] Set default right dock and stable width.
+- [ ] Verify the task pane does not create duplicates after repeated toggles.
 - [ ] Commit with message: `feat: add vsto ribbon and task pane shell`
 
-## Task 3: Build the Chat UI Shell in WPF
+## Task 3: Add WebView2 Host and Local Frontend Loading
 
 **Files:**
-- Create: `src/OfficeAgent.DesktopUI/Views/ChatPaneView.xaml`
-- Create: `src/OfficeAgent.DesktopUI/ViewModels/ChatPaneViewModel.cs`
-- Create: `src/OfficeAgent.DesktopUI/ViewModels/MessageItemViewModel.cs`
+- Create: `src/OfficeAgent.ExcelAddIn/WebBridge/WebViewBootstrapper.cs`
 - Modify: `src/OfficeAgent.ExcelAddIn/TaskPane/TaskPaneHostControl.cs`
+- Create: `src/OfficeAgent.Frontend/package.json`
+- Create: `src/OfficeAgent.Frontend/vite.config.ts`
+- Create: `src/OfficeAgent.Frontend/src/main.tsx`
+- Create: `src/OfficeAgent.Frontend/src/App.tsx`
 
-- [ ] Host a WPF `ChatPaneView` inside the WinForms task pane using `ElementHost`.
-- [ ] Add UI regions for:
-  - session list
+- [ ] Add the `Microsoft.Web.WebView2` SDK to the VSTO host project.
+- [ ] Initialize a `WebView2` control inside `TaskPaneHostControl`.
+- [ ] Build a minimal React frontend shell with:
+  - session sidebar
   - message thread
   - composer
-  - selection badge
-  - settings panel
-- [ ] Implement a basic ViewModel with mock welcome message and send command.
-- [ ] Keep the UI state local first; no Excel or API calls in this task.
-- [ ] Verify task pane resizing and scroll behavior inside Excel.
-- [ ] Commit with message: `feat: add desktop chat pane ui shell`
+  - selection badge placeholder
+  - settings button
+- [ ] Package frontend assets locally and load them into WebView2.
+- [ ] Use virtual host mapping instead of raw `file:///`.
+- [ ] Verify task pane can render the React shell without any remote server dependency.
+- [ ] Commit with message: `feat: host react task pane in webview2`
 
-## Task 4: Add Local Session and Settings Persistence
+## Task 4: Define the JS/.NET Bridge Contract
+
+**Files:**
+- Create: `src/OfficeAgent.ExcelAddIn/WebBridge/WebMessageEnvelope.cs`
+- Create: `src/OfficeAgent.ExcelAddIn/WebBridge/WebMessageRouter.cs`
+- Create: `src/OfficeAgent.Frontend/src/bridge/nativeBridge.ts`
+- Create: `src/OfficeAgent.Frontend/src/types/bridge.ts`
+- Test: `tests/OfficeAgent.Frontend.Tests/nativeBridge.test.ts`
+
+- [ ] Define request/response envelopes with `type`, `requestId`, `payload`, `ok`, and `error`.
+- [ ] Implement frontend wrapper methods:
+  - `getSelectionContext`
+  - `getSessions`
+  - `saveSettings`
+  - `executeExcelCommand`
+  - `runSkill`
+- [ ] Implement native message routing with a whitelist.
+- [ ] Return structured errors instead of plain strings.
+- [ ] Add tests for:
+  - request/response correlation
+  - unknown message rejection
+  - malformed payload rejection
+- [ ] Commit with message: `feat: add webview bridge contract`
+
+## Task 5: Add Session and Settings Persistence
 
 **Files:**
 - Create: `src/OfficeAgent.Core/Models/ChatSession.cs`
@@ -135,30 +175,32 @@
 - Create: `src/OfficeAgent.Infrastructure/Storage/FileSessionStore.cs`
 - Create: `src/OfficeAgent.Infrastructure/Storage/FileSettingsStore.cs`
 - Create: `src/OfficeAgent.Infrastructure/Security/DpapiSecretProtector.cs`
-- Modify: `src/OfficeAgent.DesktopUI/ViewModels/ChatPaneViewModel.cs`
-- Modify: `src/OfficeAgent.DesktopUI/ViewModels/SettingsViewModel.cs`
+- Modify: `src/OfficeAgent.ExcelAddIn/WebBridge/WebMessageRouter.cs`
+- Modify: `src/OfficeAgent.Frontend/src/App.tsx`
 - Test: `tests/OfficeAgent.Core.Tests/SessionStoreTests.cs`
 
 - [ ] Store sessions under `%LocalAppData%\OfficeAgent\sessions\`.
 - [ ] Store non-sensitive settings in `%LocalAppData%\OfficeAgent\settings.json`.
 - [ ] Encrypt `API Key` with user-scope DPAPI before persistence.
-- [ ] Support:
-  - create session
-  - switch session
-  - delete session
-  - reopen last active session
-- [ ] Add `Base URL` to settings from day one.
-- [ ] Add tests for serialization, malformed file recovery, and encrypted secret roundtrip.
-- [ ] Commit with message: `feat: persist sessions and settings for vsto add-in`
+- [ ] Include `Base URL` and `Model` in settings from the start.
+- [ ] Add session operations:
+  - create
+  - switch
+  - delete
+  - restore last active
+- [ ] Wire frontend settings and session sidebar to native persistence via the bridge.
+- [ ] Add tests for malformed file recovery and secret roundtrip.
+- [ ] Commit with message: `feat: persist sessions and settings through native stores`
 
-## Task 5: Add Excel Selection Context and Event Bridge
+## Task 6: Add Excel Selection Context Bridge
 
 **Files:**
 - Create: `src/OfficeAgent.Core/Models/SelectionContext.cs`
 - Create: `src/OfficeAgent.Core/Services/IExcelContextService.cs`
 - Create: `src/OfficeAgent.Infrastructure/Excel/ExcelSelectionContextService.cs`
 - Modify: `src/OfficeAgent.ExcelAddIn/ThisAddIn.cs`
-- Modify: `src/OfficeAgent.DesktopUI/ViewModels/ChatPaneViewModel.cs`
+- Modify: `src/OfficeAgent.ExcelAddIn/WebBridge/WebMessageRouter.cs`
+- Modify: `src/OfficeAgent.Frontend/src/App.tsx`
 - Test: `tests/OfficeAgent.Core.Tests/SelectionContextTests.cs`
 
 - [ ] Subscribe to `Application.SheetSelectionChange`.
@@ -171,34 +213,38 @@
   - contiguous/non-contiguous state
   - header preview
   - sample rows
-- [ ] Push updates to the WPF ViewModel on the UI thread.
-- [ ] Block unsupported multi-area selections with a clear user message.
+- [ ] Push selection updates to the frontend through bridge events.
+- [ ] Block unsupported multi-area selections with a clear user-facing message.
 - [ ] Add tests for normalization logic independent of Excel runtime.
-- [ ] Commit with message: `feat: add excel selection context bridge`
+- [ ] Commit with message: `feat: bridge live excel selection context to web ui`
 
-## Task 6: Add Excel Command Execution and Confirmation Policy
+## Task 7: Add Excel Command Execution and Confirmation Flow
 
 **Files:**
 - Create: `src/OfficeAgent.Core/Models/ExcelCommand.cs`
 - Create: `src/OfficeAgent.Core/Services/IExcelCommandExecutor.cs`
 - Create: `src/OfficeAgent.Core/Services/ConfirmationService.cs`
 - Create: `src/OfficeAgent.Infrastructure/Excel/ExcelInteropAdapter.cs`
-- Modify: `src/OfficeAgent.DesktopUI/ViewModels/ChatPaneViewModel.cs`
+- Modify: `src/OfficeAgent.ExcelAddIn/WebBridge/WebMessageRouter.cs`
+- Modify: `src/OfficeAgent.Frontend/src/components/ConfirmationCard.tsx`
+- Modify: `src/OfficeAgent.Frontend/src/App.tsx`
 - Test: `tests/OfficeAgent.Core.Tests/ConfirmationServiceTests.cs`
 
-- [ ] Implement a command classification policy:
-  - `read` commands execute immediately
-  - `write` commands require confirmation
+- [ ] Implement command classification:
+  - read commands execute immediately
+  - write commands require confirmation
 - [ ] Add executor methods for:
   - read current selection as table
   - write range
-  - add/rename/delete worksheet
-- [ ] Show a confirmation card in the UI before write execution.
-- [ ] Keep executor behind an interface so the ViewModel never touches Interop objects directly.
-- [ ] Add tests for confirmation rules and command model validation.
-- [ ] Commit with message: `feat: add excel command executor and confirmation flow`
+  - add worksheet
+  - rename worksheet
+  - delete worksheet
+- [ ] Return command previews to the frontend before write execution.
+- [ ] Keep COM access entirely behind the executor service.
+- [ ] Add tests for confirmation policy and command validation.
+- [ ] Commit with message: `feat: add excel command execution and confirmation`
 
-## Task 7: Add Agent Orchestration and Skill Routing
+## Task 8: Add Agent Routing and upload_data Skill
 
 **Files:**
 - Create: `src/OfficeAgent.Core/Models/AgentCommandEnvelope.cs`
@@ -206,82 +252,94 @@
 - Create: `src/OfficeAgent.Core/Services/ISkillRegistry.cs`
 - Create: `src/OfficeAgent.Core/Orchestration/AgentOrchestrator.cs`
 - Create: `src/OfficeAgent.Core/Skills/SkillRegistry.cs`
+- Create: `src/OfficeAgent.Core/Skills/UploadDataSkill.cs`
+- Create: `src/OfficeAgent.Core/Models/UploadPreview.cs`
+- Modify: `src/OfficeAgent.ExcelAddIn/WebBridge/WebMessageRouter.cs`
+- Modify: `src/OfficeAgent.Frontend/src/App.tsx`
 - Test: `tests/OfficeAgent.Core.Tests/AgentOrchestratorTests.cs`
+- Test: `tests/OfficeAgent.Core.Tests/UploadDataSkillTests.cs`
 
-- [ ] Preserve the current product contract:
+- [ ] Preserve the current product rules:
   - natural language first
-  - slash command as forced skill entry
-  - structured command envelope instead of arbitrary script text
-- [ ] Support three routes:
+  - slash command forces the skill route
+  - structured command envelope
+  - read direct, write confirm
+- [ ] Support routes:
   - chat
   - excel command
   - skill
-- [ ] Add `upload_data` route detection from both `/upload_data ...` and natural language.
-- [ ] Add tests for route resolution and invalid command rejection.
-- [ ] Commit with message: `feat: add vsto agent orchestration and skill routing`
+- [ ] Add `upload_data` matching for both `/upload_data ...` and natural language.
+- [ ] Read the current selection table through the native executor.
+- [ ] Build preview payload from headers and sample rows.
+- [ ] Return preview to the frontend, wait for confirmation, then call the business API.
+- [ ] Commit with message: `feat: add upload_data skill over native bridge`
 
-## Task 8: Implement HTTP Clients and upload_data Skill
+## Task 9: Add HTTP Clients and Configurable Base URL
 
 **Files:**
 - Create: `src/OfficeAgent.Infrastructure/Http/LlmClient.cs`
 - Create: `src/OfficeAgent.Infrastructure/Http/BusinessApiClient.cs`
-- Create: `src/OfficeAgent.Core/Skills/UploadDataSkill.cs`
-- Create: `src/OfficeAgent.Core/Models/UploadPreview.cs`
-- Modify: `src/OfficeAgent.DesktopUI/ViewModels/ChatPaneViewModel.cs`
-- Test: `tests/OfficeAgent.Core.Tests/UploadDataSkillTests.cs`
+- Modify: `src/OfficeAgent.Core/Models/AppSettings.cs`
+- Test: `tests/OfficeAgent.Infrastructure.Tests/BusinessApiClientTests.cs`
 
 - [ ] Use `HttpClient` with configurable `Base URL`.
-- [ ] Read API Key from the protected settings store.
-- [ ] Build the `upload_data` flow:
-  - read selection table
-  - infer columns
-  - build preview payload
-  - show confirmation
-  - submit to `upload_data_api`
-  - render result in the chat thread
-- [ ] Add retry/timeout/error formatting at the client layer.
-- [ ] Add tests for payload building, base URL normalization, and API failure handling.
-- [ ] Commit with message: `feat: add upload_data skill for vsto add-in`
+- [ ] Normalize `Base URL` by trimming whitespace and removing trailing slashes.
+- [ ] Read protected `API Key` through the settings store.
+- [ ] Add timeout, retry, and structured API error formatting.
+- [ ] Add tests for:
+  - default base URL fallback
+  - trailing slash normalization
+  - non-2xx error formatting
+- [ ] Commit with message: `feat: add native http clients with configurable base url`
 
-## Task 9: Package and Validate Enterprise Distribution
+## Task 10: Package for Enterprise Distribution
 
 **Files:**
 - Create: `installer/OfficeAgent.Setup`
 - Create: `docs/vsto-manual-test-checklist.md`
 - Modify: solution packaging settings
 
-- [ ] Build an MSI installer that deploys the add-in for target users or machines.
-- [ ] Include prerequisites documentation:
-  - VSTO runtime
-  - .NET Framework 4.8
-  - Office compatibility expectations
-- [ ] Add installer options for:
+- [ ] Build an MSI installer that deploys:
+  - VSTO add-in
+  - packaged frontend assets
+  - WebView2 Runtime prerequisite handling
+- [ ] Choose deployment mode:
+  - default: bundle or invoke the Evergreen Standalone Installer for intranet/offline scenarios
+- [ ] Add installer flows for:
   - install
   - uninstall
   - upgrade
-- [ ] Verify add-in load behavior after fresh install and after Excel restart.
-- [ ] Verify no manual sideload, manifest upload, or localhost trust is required for end users.
-- [ ] Write a manual checklist for:
+- [ ] Verify add-in load behavior after fresh install and Excel restart.
+- [ ] Verify no manifest side-load, catalog registration, or localhost certificate trust is needed for end users.
+- [ ] Write a manual checklist covering:
   - Excel 2019 x86/x64
+  - task pane open/close
   - selection updates
   - upload_data confirmation
-  - local session restore
   - API Key/Base URL save and reload
-- [ ] Commit with message: `chore: package vsto add-in for enterprise deployment`
+- [ ] Commit with message: `chore: package vsto add-in with webview2 runtime`
 
-## Task 10: Stabilization and Release Readiness
+## Task 11: Stabilization and Release Readiness
 
 **Files:**
 - Modify: logging, diagnostics, settings recovery, docs as needed
 
-- [ ] Add structured logging for startup, pane open/close, selection changes, skill execution, and HTTP failures.
+- [ ] Add structured logging for:
+  - startup
+  - pane open/close
+  - WebView2 initialization
+  - bridge messages
+  - selection changes
+  - skill execution
+  - HTTP failures
 - [ ] Add defensive handling for:
   - protected worksheets
   - merged cells
   - invalid selection
   - workbook closed during pending action
+  - WebView2 Runtime missing or initialization failure
 - [ ] Run the full test suite.
 - [ ] Run manual QA in supported Excel environments.
 - [ ] Produce a release note and known-limitations document.
-- [ ] Commit with message: `chore: harden vsto officeagent mvp`
+- [ ] Commit with message: `chore: harden vsto webview officeagent mvp`
 

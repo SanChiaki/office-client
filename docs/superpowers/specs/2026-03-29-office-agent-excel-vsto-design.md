@@ -2,172 +2,278 @@
 
 日期：2026-03-29
 
-状态：架构改版草案，待评审
+状态：已切换为 VSTO 主线方案，待进入实施
 
 ## 1. 目标
 
-将当前 `Office Add-in + Office.js` 路线切换为 `VSTO Excel Add-in` 路线，满足以下核心目标：
+将当前 `Office Add-in + Office.js` 技术方向切换为 `VSTO Excel Add-in`，并保留已经确认过的产品边界：
 
 - 仅支持 `Windows 桌面版 Excel 2019 及之后版本`
-- 以 `Excel 插件` 形态承载 AI 聊天任务窗格
-- 能稳定获取当前选中 `Sheet / Range / 行列 / 表头 / 样例值`
-- 能执行 Excel 深度操作，包括读写单元格、增删改 Sheet、结构修改
-- 支持外部 API 调用
-- 支持 `upload_data` 等可扩展 skill
+- 主界面仍然是 AI 对话形态
+- 需要实时展示当前选中的 `Sheet / 地址 / 行列 / 样例值`
+- 需要支持 Excel 深度操作，不再受 Office.js 边界限制
+- 需要支持外部 API 调用
+- 需要支持 `upload_data` 这类可扩展 skill
 - 会话历史按插件级、本地机器级持久化
-- 优先满足企业内网分发与安装简化
+- 优先满足内网分发和企业安装简化
 
-## 2. 方向结论
+## 2. 主方案结论
 
-推荐技术路线：
+主方案改为：
 
-`VSTO Excel Add-in + Ribbon + CustomTaskPane + WPF Chat UI + .NET Framework 4.8 + MSI 分发`
+`VSTO Excel Add-in + Ribbon + CustomTaskPane + WebView2 + React/TypeScript + .NET Framework 4.8 + MSI 分发`
 
-原因：
+这条路线的核心取舍是：
 
-- 更贴合你现在的单平台目标：只做 Windows Excel
-- 分发方式更像传统桌面插件，适合内网统一安装
-- Excel 自动化能力更强，不再受 `Office.js` 能力边界限制
-- 不再依赖远端 HTTPS 托管页面、manifest 侧载、证书信任链等 Office Add-in 额外复杂度
+- 宿主、Excel 自动化、安装分发，交给 `VSTO`
+- 聊天 UI、会话列表、设置面板、确认卡片，继续使用 `Web 技术栈`
+- Excel 和本地能力，不再直接从前端调用，而是通过 `WebView2 JS/.NET Bridge` 调宿主服务
 
 ## 3. 方案对比
 
-### 方案 A：VSTO + 原生 WPF 聊天窗格
+### 方案 A：VSTO + WebView2 + React
 
 说明：
-- VSTO 负责 Excel 生命周期、Ribbon、自定义任务窗格
-- 任务窗格 UI 采用 `WPF`
-- 通过 `Microsoft.Office.Interop.Excel` 直接操作 Excel
+
+- VSTO 负责 Excel 宿主、Ribbon、自定义任务窗格、Excel Interop、本地存储、安装分发
+- WebView2 负责承载聊天前端
+- React/TypeScript 负责 UI 和前端交互
+- 前端通过消息桥调用本地 .NET 服务
 
 优点：
-- 原生桌面体验
-- 不依赖浏览器容器
-- 对 Excel 交互最直接
-- 打包部署路径最清晰
+
+- 最适合聊天类产品界面
+- 能复用当前 MVP 的前端交互思路
+- UI 开发速度和可维护性明显优于纯 WPF
+- 仍然保留 VSTO 的分发和 Excel 深度操作优势
 
 缺点：
-- 需要重写当前 Web UI
-- 前端迭代效率低于 Web 技术栈
+
+- 需要设计一层 Web 与 .NET 的桥接协议
+- 需要处理 WebView2 Runtime 的检测与分发
+- 前端不能继续直接依赖 Office.js
 
 结论：
-- `推荐`
 
-### 方案 B：VSTO + WebView2 承载现有 React UI
+- `推荐，作为主方案`
+
+### 方案 B：VSTO + 纯 WPF
 
 说明：
-- VSTO 仍负责 Ribbon、TaskPane、Excel 自动化
-- 聊天界面继续用现有 Web 前端，通过 `WebView2` 承载
-- 通过 JS/.NET 桥接访问本地 Excel 能力
+
+- 任务窗格 UI 完全使用 WPF
 
 优点：
-- 可复用当前 Office Add-in MVP 的部分 UI/交互逻辑
-- 聊天界面开发效率更高
+
+- 宿主集成最直接
+- 不需要浏览器容器和消息桥
 
 缺点：
-- 需要额外处理 JS/.NET 通讯
-- 部署时要处理 `WebView2 Runtime`
-- 技术栈混合度更高
+
+- 对聊天产品 UI 来说开发效率偏低
+- 会话列表、富文本消息、复杂状态交互的迭代成本更高
+- 难以复用当前 Web 前端经验
 
 结论：
-- 适合作为“迁移成本优先”备选
 
-### 方案 C：VSTO + 纯 WinForms 窗格
+- `作为备选，不作为主路线`
+
+### 方案 C：继续 Office Add-in
 
 说明：
-- 全部使用 WinForms 实现任务窗格 UI
 
-优点：
-- 与 VSTO 集成最直接
-- 工程最简单
+- 保持 Office Add-in 路线，继续走 manifest、任务窗格网页、Office.js
 
 缺点：
-- 聊天界面体验和可维护性明显较差
+
+- 分发链路复杂
+- 仍受 Office.js 能力边界约束
+- 与你当前“内网分发简单、Excel 操作更强”的目标冲突
 
 结论：
-- 不推荐作为长期方案
 
-## 4. 推荐架构
+- `不再作为主路线`
 
-### 4.1 宿主结构
+## 4. 官方边界
+
+这条方案的几个关键前提来自 Microsoft 官方文档：
+
+- WebView2 可以嵌入 `WinForms` 宿主，支持 `.NET Framework` 桌面项目：[Get started with WebView2 in WinForms apps](https://learn.microsoft.com/en-us/microsoft-edge/webview2/get-started/winforms)
+- Web 与宿主之间可以通过 `window.chrome.webview.postMessage` 和宿主侧 `PostWebMessageAsJson / WebMessageReceived` 通讯：[Interop of native and web code](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/communicate-btwn-web-native)
+- WebView2 本地静态资源可以通过 `virtual host name mapping` 承载，这样前端页面拥有 `http/https` origin，支持 `localStorage`、`indexedDB` 和安全上下文 API：[Using local content in WebView2 apps](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/working-with-local-content)
+- WebView2 Runtime 支持在线 bootstrapper 和离线 standalone installer，适合企业安装包集成：[Distribute your app and the WebView2 Runtime](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution)
+- VSTO 的正式发布支持 `ClickOnce` 或 `Windows Installer`，其中 Windows Installer 更适合内网机器级安装：[Deploy an Office solution](https://learn.microsoft.com/en-us/visualstudio/vsto/deploying-an-office-solution?view=vs-2022)
+- 自定义任务窗格没有默认显示入口，因此需要自行提供 Ribbon 按钮：[CustomTaskPane.Visible Property](https://learn.microsoft.com/en-us/dotnet/api/microsoft.office.tools.customtaskpane.visible?view=vsto-2022)
+
+## 5. 总体架构
 
 ```text
 Excel
   -> VSTO Add-in Host
       -> Ribbon Controller
-      -> Custom Task Pane Host
-      -> Excel Event Bridge
-      -> Application Services
+      -> TaskPane Controller
+      -> WinForms TaskPaneHostControl
+          -> WebView2
+              -> React Frontend
+      -> Native Application Services
+          -> Excel Event Bridge
+          -> Excel Interop Adapter
           -> Agent Orchestrator
           -> Skill Registry
           -> Confirmation Service
-          -> Session Service
-          -> Settings Service
-      -> Infrastructure
-          -> Excel Interop Adapter
+          -> Session Store
+          -> Settings Store
+          -> Secret Protector
           -> HTTP API Clients
-          -> Local File Storage
-          -> Secret Protection
-      -> WPF Chat UI
 ```
 
-### 4.2 项目拆分
+宿主层和前端层的职责边界：
 
-推荐按 4 个项目组织：
+- `VSTO 宿主`
+  负责 Excel 生命周期、Ribbon、任务窗格、Interop、本地文件、密钥保护、安装分发
+- `React 前端`
+  负责聊天界面、会话列表、消息渲染、设置面板、确认卡片、选区展示
+- `Bridge`
+  负责前后端之间的结构化消息交互
+
+## 6. 项目拆分
+
+推荐拆成 5 个项目：
 
 - `src/OfficeAgent.ExcelAddIn`
-  说明：VSTO 宿主项目，包含 `ThisAddIn`、Ribbon、TaskPane 注册、Excel 事件绑定
-- `src/OfficeAgent.DesktopUI`
-  说明：WPF 视图、ViewModel、命令绑定、确认卡片、会话列表、设置面板
+  说明：VSTO 宿主项目，包含 `ThisAddIn`、Ribbon、TaskPane 控制器、Excel 事件注册
 - `src/OfficeAgent.Core`
-  说明：领域模型、Agent 编排、skill 路由、确认策略、会话与设置服务接口
+  说明：领域模型、命令模型、Agent 编排、skill 路由、确认策略接口
 - `src/OfficeAgent.Infrastructure`
-  说明：Excel Interop 适配器、HTTP 客户端、本地持久化、凭据保护实现
+  说明：Excel Interop、HTTP 客户端、本地文件存储、DPAPI、运行日志
+- `src/OfficeAgent.Frontend`
+  说明：React/Vite 前端工程，产出任务窗格静态资源
+- `installer/OfficeAgent.Setup`
+  说明：MSI 安装包工程，负责部署 VSTO add-in、前端资源和 WebView2 Runtime
 
-## 5. UI 形态
+## 7. UI 形态
 
-### 5.1 主入口
+### 7.1 入口
 
-通过 Ribbon 上的 `OfficeAgent` 按钮显示或隐藏任务窗格。
+通过 Excel Ribbon 上的 `OfficeAgent` 按钮显示或隐藏任务窗格。
 
-Microsoft 官方文档明确指出，自定义任务窗格没有默认显示 UI，因此插件应提供一个按钮让用户显式打开或关闭任务窗格。这个按钮就放在 Ribbon 上。来源：
-- [CustomTaskPane.Visible Property](https://learn.microsoft.com/en-us/dotnet/api/microsoft.office.tools.customtaskpane.visible?view=vsto-2022)
+### 7.2 任务窗格结构
 
-### 5.2 任务窗格布局
+前端界面继续沿用你已经确认过的产品形态：
 
-任务窗格布局保持你已经确认过的产品形态：
+- 左侧：会话列表
+- 右侧：聊天主区
+- 顶部：标题与设置入口
+- 中部：消息线程
+- 底部：输入框
+- 输入框附近：当前选区摘要
+- 中部卡片：写操作和外部提交的确认卡片
 
-- 左侧会话列表
-- 右侧聊天主区
-- 顶部标题栏和设置入口
-- 中部消息线程
-- 底部输入框
-- 输入框上方或下方显示当前选区摘要
-- 写操作和外部提交显示确认卡片
+### 7.3 设置项
 
-### 5.3 设置项
-
-首版设置面板保留：
+首版设置面板继续保留：
 
 - `API Key`
 - `Base URL`
 - `Model`
 
-正式版再演进到 OAuth。
+后续正式版再切到 OAuth。
 
-## 6. Excel 交互架构
+## 8. WebView2 承载策略
 
-### 6.1 Excel 事件来源
+### 8.1 前端资源来源
 
-VSTO 宿主监听 Excel 应用程序事件，至少包括：
+不走远端 HTTPS 页面托管。前端构建产物直接随安装包落地到本机安装目录。
+
+推荐目录：
+
+- `%ProgramFiles%\OfficeAgent\app\`
+  或
+- `%LocalAppData%\OfficeAgent\app\`
+
+### 8.2 本地页面加载方式
+
+推荐用 `virtual host name mapping`，例如：
+
+- `https://appassets.officeagent.local/index.html`
+
+对应映射到本地静态目录。
+
+这样比直接 `file:///` 更合适，因为：
+
+- 有明确 origin
+- 支持相对资源路径
+- 支持安全上下文相关 Web API
+- 更贴近正常 Web 前端运行环境
+
+### 8.3 前端状态
+
+前端自己的临时 UI 状态可以保存在内存。
+
+业务级持久化不要依赖浏览器存储作为唯一数据源，应由宿主统一落盘，再回填给前端。
+
+## 9. JS/.NET Bridge 设计
+
+### 9.1 通讯方式
+
+Web 到宿主：
+
+- `window.chrome.webview.postMessage(...)`
+
+宿主到 Web：
+
+- `CoreWebView2.PostWebMessageAsJson(...)`
+
+### 9.2 消息协议
+
+建议使用结构化 envelope，不走自由文本协议。
+
+示例：
+
+```json
+{
+  "type": "excel.readSelection",
+  "requestId": "req-001",
+  "payload": {}
+}
+```
+
+返回：
+
+```json
+{
+  "type": "excel.readSelection.result",
+  "requestId": "req-001",
+  "ok": true,
+  "payload": {
+    "sheetName": "Sheet1",
+    "address": "A1:D5"
+  }
+}
+```
+
+### 9.3 Bridge 原则
+
+- 只允许白名单消息类型
+- 每条消息必须有 `requestId`
+- 宿主层统一做参数校验
+- 错误必须结构化返回给前端
+- 不把 Excel COM 对象、路径句柄等原生对象直接暴露给前端
+
+## 10. Excel 交互架构
+
+### 10.1 事件桥
+
+宿主监听 Excel 事件，至少包括：
 
 - `SheetSelectionChange`
 - `WorkbookOpen`
 - `WorkbookBeforeClose`
 - 必要时的 `SheetActivate`
 
-### 6.2 选区上下文服务
+### 10.2 选区上下文服务
 
-统一产出 `SelectionContext`：
+统一输出 `SelectionContext`：
 
 ```json
 {
@@ -183,11 +289,11 @@ VSTO 宿主监听 Excel 应用程序事件，至少包括：
 }
 ```
 
-### 6.3 Excel 操作适配器
+### 10.3 Excel 命令适配器
 
-所有 Excel 读写通过 `ExcelInteropAdapter` 统一暴露，避免 UI 或 skill 直接接触 Interop 对象。
+所有 Excel 操作统一通过 `ExcelInteropAdapter` 暴露。
 
-建议对外提供的命令族：
+建议命令族：
 
 - `ReadSelectionTable`
 - `ReadRange`
@@ -199,18 +305,19 @@ VSTO 宿主监听 Excel 应用程序事件，至少包括：
 - `DeleteRows`
 - `AutoFit`
 
-## 7. Agent 与 Skill 架构
+## 11. Agent 与 Skill 架构
 
-### 7.1 Agent Orchestrator
-
-保留你当前已确认的产品规则：
+继续保留已经确认的业务规则：
 
 - 自然语言优先
 - slash 命令作为强制 skill 入口
-- 读操作可直接执行
-- 写操作和会改动外部系统状态的动作必须确认
+- 读操作直接执行
+- 写操作必须确认
+- 会改动外部系统状态的 API 提交也必须确认
 
-Agent 输出不直接生成任意文本脚本，而是生成结构化命令：
+Agent 输出统一为结构化命令，而不是任意脚本。
+
+示例：
 
 ```json
 {
@@ -233,19 +340,9 @@ Agent 输出不直接生成任意文本脚本，而是生成结构化命令：
 }
 ```
 
-### 7.2 Skill Registry
+### upload_data Skill
 
-首版至少支持：
-
-- `upload_data`
-
-保留扩展位：
-
-- `format_selection`
-- `generate_sheet`
-- `sync_to_system`
-
-### 7.3 upload_data Skill 流程
+流程不变：
 
 ```text
 用户输入
@@ -253,174 +350,123 @@ Agent 输出不直接生成任意文本脚本，而是生成结构化命令：
   -> 读取当前选区
   -> 根据首行/首列推断字段
   -> 生成上传 payload 预览
-  -> 弹出确认卡片
+  -> 显示确认卡片
   -> 用户确认
   -> 调用 upload_data_api
   -> 在聊天线程显示结果
 ```
 
-## 8. 本地存储与安全
+## 12. 本地存储与安全
 
-### 8.1 会话持久化
+### 12.1 会话与设置
 
-首版不再使用浏览器 `localStorage`，改用本地文件存储：
+首版使用本地文件存储：
 
-- 路径建议：`%LocalAppData%\OfficeAgent\`
-- `sessions\index.json`
-- `sessions\<sessionId>.json`
-- `settings.json`
+- `%LocalAppData%\OfficeAgent\sessions\index.json`
+- `%LocalAppData%\OfficeAgent\sessions\<sessionId>.json`
+- `%LocalAppData%\OfficeAgent\settings.json`
 
-### 8.2 敏感信息存储
+### 12.2 敏感信息
 
-`API Key` 不建议明文写入 `settings.json`。
+`API Key` 不明文存入 settings JSON。
 
 推荐：
 
-- 会话与普通设置：JSON 文件
+- 普通设置和会话：JSON
 - API Key：Windows `DPAPI` 用户级加密
 
-这样在 demo 阶段也比浏览器本地存储更安全。
+### 12.3 安全边界
 
-## 9. 部署与分发
+- Bridge 消息白名单
+- 不允许前端直接执行任意本地命令
+- 不默认把整块大选区发送给外部 API
+- 写 Excel 和外部提交统一确认
 
-VSTO 的正式分发策略建议直接走：
+## 13. 部署与分发
 
-`MSI 安装包`
+正式分发建议：
 
-原因：
+`MSI + WebView2 Runtime 检测/安装`
 
-- 可按机器安装
-- 更适合企业软件中心、组策略、SCCM、Intune、内网分发
-- 不需要每个用户手工侧载或信任目录
+推荐策略：
 
-Microsoft 官方文档明确指出：
-
-- VSTO 可通过 `ClickOnce` 或 `Windows Installer`
-- `Windows Installer` 支持为一台机器上的所有用户安装
-
-来源：
-- [Deploy an Office solution](https://learn.microsoft.com/en-us/visualstudio/vsto/deploying-an-office-solution?view=vs-2022)
-- [Deploy an Office solution by using ClickOnce](https://learn.microsoft.com/en-us/visualstudio/vsto/deploying-an-office-solution-by-using-clickonce?view=visualstudio)
-
-部署建议：
-
-- 开发调试：Visual Studio F5
-- UAT：ClickOnce 可选
+- 开发调试：Visual Studio F5 + 前端本地 dev server 可选
+- UAT：MSI 测试包
 - 正式发布：MSI
 
-## 10. 兼容性与环境约束
+WebView2 Runtime 策略：
 
-### 10.1 支持范围
+- 内网/离线环境优先：随安装包集成 `Evergreen Standalone Installer`
+- 在线环境可选：Bootstrapper
 
-- Windows 桌面版 Excel 2019+
-- 32/64 位 Office 都要验证
-- 不支持 Mac
-- 不支持 Excel 网页版
+因为 Microsoft 官方文档明确支持：
 
-### 10.2 开发环境
-
-VSTO 开发机需具备：
-
-- Visual Studio Office 开发工具
-- .NET Framework 4.x
-- Excel
+- 在线 bootstrapper 安装
+- 离线 standalone installer 安装
+- per-machine 和 per-user 两种安装模式
 
 来源：
-- [Configure a computer to develop Office solutions](https://learn.microsoft.com/en-us/visualstudio/vsto/how-to-configure-a-computer-to-develop-office-solutions?view=visualstudio)
+- [Distribute your app and the WebView2 Runtime](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution)
 
-### 10.3 技术边界
+## 14. 兼容性约束
 
-VSTO UI 与文档交互代码不能直接复用到 Office Add-in。
+- Windows 桌面版 Excel 2019+
+- 需要验证 Office x86/x64
+- 不支持 Mac
+- 不支持 Excel Web
+- VSTO 主体仍应基于 `.NET Framework 4.8`
 
-Microsoft 的迁移教程明确把 VSTO 代码分成三类：
+## 15. 测试策略
 
-- UI code
-- Document code
-- Logic code
-
-其中能共享的主要是“逻辑代码”，UI 和文档交互代码不能直接平移到 Office Add-in，也反过来说明当前 React/Office.js MVP 不能原样迁到 VSTO。来源：
-- [Share code between both a VSTO Add-in and an Office Add-in](https://learn.microsoft.com/en-us/office/dev/add-ins/tutorials/migrate-vsto-to-office-add-in-shared-code-library-tutorial)
-
-## 11. 测试策略
-
-### 11.1 单元测试
+### 15.1 单元测试
 
 覆盖：
 
 - skill 路由
-- 命令解析
+- 命令 envelope 解析
 - payload 组装
+- Base URL 解析
 - 会话持久化
-- 设置与 Base URL 解析
 - 确认策略
+- Bridge 消息校验
 
-### 11.2 集成测试
+### 15.2 集成测试
 
 覆盖：
 
+- WebView2 bridge handler
 - Excel Interop 适配器
-- 选区上下文服务
+- 本地存储
 - HTTP 客户端
-- 任务窗格与 ViewModel 交互
 
-### 11.3 手工验证
+### 15.3 手工验证
 
 至少覆盖：
 
 - Excel 2019 32 位
 - Excel 2019 64 位
-- 一个更新版本的 Excel 桌面端
-- 内网 MSI 安装
+- 一个更高版本 Excel 桌面端
+- 安装包安装/升级/卸载
 - 首次打开任务窗格
 - 选区实时刷新
 - upload_data 预览/确认/提交
 
-## 12. 分阶段实施建议
+## 16. 结论
 
-### Phase 1：VSTO 外壳
-
-- 建立 Excel VSTO 项目
-- 加 Ribbon 按钮
-- 打通 CustomTaskPane
-- 放入空白聊天 UI
-
-### Phase 2：核心桌面能力
-
-- 会话持久化
-- 设置面板
-- API Key / Base URL
-- Excel 选区监听
-
-### Phase 3：Agent 与 Skill
-
-- 命令模型
-- upload_data skill
-- 写操作确认流
-- HTTP 客户端
-
-### Phase 4：分发与交付
-
-- 安装包
-- 签名
-- UAT 验收
-- 内网部署文档
-
-## 13. 结论
-
-如果目标明确是：
+对于你当前的真实目标：
 
 - 企业内网
 - Windows Excel
 - 安装分发简单
+- 聊天 UI 开发效率高
 - Excel 操作能力强
 
-那么 `VSTO + MSI` 比继续推进纯 Office Add-in 更契合你的实际需求。
-
-在这条路线上，我建议首版采用：
+最合适的路线不是纯 WPF，也不是继续 Office Add-in，而是：
 
 - `VSTO Excel Add-in`
 - `Ribbon + CustomTaskPane`
-- `WPF Chat UI`
+- `WinForms Host + WebView2`
+- `React/TypeScript UI`
 - `Excel Interop Adapter`
 - `本地 JSON + DPAPI`
 - `MSI 分发`
