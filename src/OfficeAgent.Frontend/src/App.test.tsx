@@ -21,6 +21,8 @@ vi.mock('./bridge/nativeBridge', () => ({
 
 const mockedBridge = vi.mocked(nativeBridge);
 let selectionContextListener: ((context: SelectionContext) => void) | null = null;
+const originalScrollTo = HTMLElement.prototype.scrollTo;
+let scrollToSpy: ReturnType<typeof vi.fn>;
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -35,6 +37,12 @@ function createDeferred<T>() {
 }
 
 beforeEach(() => {
+  scrollToSpy = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+    configurable: true,
+    writable: true,
+    value: scrollToSpy,
+  });
   mockedBridge.ping.mockResolvedValue({
     host: 'browser-preview',
     version: 'dev',
@@ -118,6 +126,16 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   selectionContextListener = null;
+  if (originalScrollTo) {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      writable: true,
+      value: originalScrollTo,
+    });
+    return;
+  }
+
+  Reflect.deleteProperty(HTMLElement.prototype, 'scrollTo');
 });
 
 describe('App shell', () => {
@@ -126,9 +144,6 @@ describe('App shell', () => {
 
     render(<App />);
 
-    expect(
-      screen.getByRole('complementary', { name: /session sidebar placeholder/i }),
-    ).toBeInTheDocument();
     expect(screen.getByRole('banner', { name: /chat header/i })).toBeInTheDocument();
     expect(
       screen.getByRole('region', { name: /message thread/i }),
@@ -137,13 +152,16 @@ describe('App shell', () => {
       screen.getByText(/welcome to office agent/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('status', { name: /selection badge placeholder/i }),
+      screen.getByRole('status', { name: /selection capsule/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('textbox', { name: /message composer/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /settings/i }),
+      screen.getByRole('button', { name: /open sessions/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /open settings/i }),
     ).toBeInTheDocument();
     expect(
       await screen.findByText(/connected to browser-preview \(dev\)/i),
@@ -152,25 +170,31 @@ describe('App shell', () => {
       await screen.findByText(/sheet1 · a1:c4/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/quarterly report\.xlsx/i),
-    ).toBeInTheDocument();
+      screen.queryByText(/quarterly report\.xlsx/i),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText(/4 rows x 3 columns/i),
-    ).toBeInTheDocument();
+      screen.queryByText(/4 rows x 3 columns/i),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText(/contiguous selection/i),
-    ).toBeInTheDocument();
+      screen.queryByText(/headers: name, region, amount/i),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText(/headers: name, region, amount/i),
-    ).toBeInTheDocument();
+      screen.queryByText(/project a · cn · 42/i),
+    ).not.toBeInTheDocument();
     expect(
-      screen.getByText(/project a · cn · 42/i),
+      screen.queryByRole('complementary', { name: /sessions drawer/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /open sessions/i }));
+
+    expect(
+      await screen.findByRole('complementary', { name: /sessions drawer/i }),
     ).toBeInTheDocument();
     expect(
       await screen.findByRole('button', { name: /browser preview/i }),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('button', { name: /open settings/i }));
 
     expect(
       screen.getByRole('dialog', { name: /settings dialog/i }),
@@ -190,7 +214,8 @@ describe('App shell', () => {
     const user = userEvent.setup();
 
     render(<App />);
-    const sidebar = screen.getByRole('complementary', { name: /session sidebar placeholder/i });
+    await user.click(await screen.findByRole('button', { name: /open sessions/i }));
+    const sidebar = await screen.findByRole('complementary', { name: /sessions drawer/i });
 
     expect(
       await screen.findByRole('heading', { name: /browser preview/i }),
@@ -208,12 +233,12 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('button', { name: /open settings/i }));
     await user.clear(screen.getByRole('textbox', { name: /base url/i }));
     await user.type(screen.getByRole('textbox', { name: /base url/i }), 'https://changed.example.com');
     await user.click(screen.getByRole('button', { name: /cancel/i }));
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('button', { name: /open settings/i }));
     expect(
       screen.getByRole('textbox', { name: /base url/i }),
     ).toHaveValue('https://api.example.com');
@@ -222,7 +247,7 @@ describe('App shell', () => {
     await user.type(screen.getByRole('textbox', { name: /base url/i }), 'https://closed.example.com');
     await user.click(screen.getByRole('button', { name: /close/i }));
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('button', { name: /open settings/i }));
     expect(
       screen.getByRole('textbox', { name: /base url/i }),
     ).toHaveValue('https://api.example.com');
@@ -234,7 +259,7 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('button', { name: /open settings/i }));
     await user.click(screen.getByRole('button', { name: /save/i }));
 
     expect(
@@ -257,7 +282,7 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('button', { name: /open settings/i }));
     const baseUrlInput = screen.getByRole('textbox', { name: /base url/i });
     await user.clear(baseUrlInput);
     await user.type(baseUrlInput, 'https://draft.example.com');
@@ -278,7 +303,7 @@ describe('App shell', () => {
 
     render(<App />);
 
-    const settingsButton = screen.getByRole('button', { name: /settings/i });
+    const settingsButton = screen.getByRole('button', { name: /open settings/i });
     await user.click(settingsButton);
 
     const dialog = screen.getByRole('dialog', { name: /settings dialog/i });
@@ -308,7 +333,7 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('button', { name: /open settings/i }));
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
 
     delayedSettings.resolve({
@@ -329,7 +354,7 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('button', { name: /open settings/i }));
 
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
     expect(await screen.findByRole('alert')).toHaveTextContent(/unable to load settings/i);
@@ -346,7 +371,7 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('button', { name: /open settings/i }));
     await user.click(screen.getByRole('button', { name: /save/i }));
 
     expect(screen.getByRole('textbox', { name: /api key/i })).toBeDisabled();
@@ -363,7 +388,7 @@ describe('App shell', () => {
     });
 
     expect(
-      await screen.findByRole('button', { name: /settings/i }),
+      await screen.findByRole('button', { name: /open settings/i }),
     ).toHaveFocus();
   });
 
@@ -390,12 +415,8 @@ describe('App shell', () => {
     expect(
       await screen.findByText(/sheet2 · b2:d5/i),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/non-contiguous selection/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/multiple selection areas are not supported yet/i),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/non-contiguous selection/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/multiple selection areas are not supported yet/i)).not.toBeInTheDocument();
   });
 
   it('shows the empty selection state when the native host has no selection context', async () => {
@@ -415,17 +436,16 @@ describe('App shell', () => {
     render(<App />);
 
     expect(
-      await screen.findByText(/no selection available/i),
+      await screen.findByText(/^no selection$/i),
     ).toBeInTheDocument();
   });
 
-  it('submits read-selection commands without requiring confirmation', async () => {
+  it('submits read-selection commands with Enter without requiring confirmation', async () => {
     const user = userEvent.setup();
 
     render(<App />);
 
-    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'read selection');
-    await user.click(screen.getByRole('button', { name: /send/i }));
+    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'read selection{enter}');
 
     expect(mockedBridge.executeExcelCommand).toHaveBeenCalledWith({
       commandType: 'excel.readSelectionTable',
@@ -437,6 +457,22 @@ describe('App shell', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/name \| region \| amount/i)).toBeInTheDocument();
     expect(screen.getByText(/project a \| cn \| 42/i)).toBeInTheDocument();
+  });
+
+  it('keeps Shift+Enter for multiline composer input', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const composer = screen.getByRole('textbox', { name: /message composer/i });
+    await user.type(composer, 'line 1');
+    await user.keyboard('{Shift>}{Enter}{/Shift}');
+    await user.type(composer, 'line 2');
+
+    expect(mockedBridge.executeExcelCommand).not.toHaveBeenCalled();
+    expect(mockedBridge.runSkill).not.toHaveBeenCalled();
+    expect(mockedBridge.runAgent).not.toHaveBeenCalled();
+    expect(composer).toHaveValue('line 1\nline 2');
   });
 
   it('routes plain natural language through the agent bridge', async () => {
@@ -661,7 +697,8 @@ describe('App shell', () => {
 
     render(<App />);
 
-    const sidebar = screen.getByRole('complementary', { name: /session sidebar placeholder/i });
+    await user.click(await screen.findByRole('button', { name: /open sessions/i }));
+    const sidebar = await screen.findByRole('complementary', { name: /sessions drawer/i });
     await screen.findByRole('heading', { name: /browser preview/i });
 
     await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'read selection');
@@ -683,7 +720,9 @@ describe('App shell', () => {
       screen.queryByText(/read selection from sheet1 a1:c4/i),
     ).not.toBeInTheDocument();
 
-    await user.click(within(sidebar).getByRole('button', { name: /browser preview/i }));
+    await user.click(screen.getByRole('button', { name: /open sessions/i }));
+    const reopenedSidebar = await screen.findByRole('complementary', { name: /sessions drawer/i });
+    await user.click(within(reopenedSidebar).getByRole('button', { name: /browser preview/i }));
 
     expect(
       await screen.findByText(/read selection from sheet1 a1:c4/i),
@@ -754,5 +793,26 @@ describe('App shell', () => {
     expect(
       await screen.findByText(/uploaded 2 row\(s\) to 项目a/i),
     ).toBeInTheDocument();
+  });
+
+  it('auto-scrolls the message thread when messages change', async () => {
+    const user = userEvent.setup();
+    mockedBridge.runAgent.mockResolvedValueOnce({
+      route: 'chat',
+      requiresConfirmation: false,
+      status: 'completed',
+      message: 'I can help with the current selection.',
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole('region', { name: /message thread/i })).toBeInTheDocument();
+    expect(scrollToSpy).toHaveBeenCalled();
+
+    scrollToSpy.mockClear();
+    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'Create a summary sheet{enter}');
+
+    expect(await screen.findByText(/i can help with the current selection/i)).toBeInTheDocument();
+    expect(scrollToSpy).toHaveBeenCalled();
   });
 });

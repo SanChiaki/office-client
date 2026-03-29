@@ -43,6 +43,7 @@ export function App() {
   const [bridgeStatus, setBridgeStatus] = useState('Connecting to native host...');
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState('');
+  const [isSessionsDrawerOpen, setIsSessionsDrawerOpen] = useState(false);
   const [selectionContext, setSelectionContext] = useState<SelectionContext | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [draftSettings, setDraftSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -55,9 +56,11 @@ export function App() {
   const [sessionThreads, setSessionThreads] = useState<Record<string, ThreadMessage[]>>({});
   const [pendingConfirmations, setPendingConfirmations] = useState<Record<string, PendingConfirmation>>({});
   const [pendingCommandSessions, setPendingCommandSessions] = useState<Record<string, boolean>>({});
+  const sessionsButtonRef = useRef<HTMLButtonElement | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const settingsDialogRef = useRef<HTMLElement | null>(null);
   const apiKeyInputRef = useRef<HTMLInputElement | null>(null);
+  const threadRef = useRef<HTMLElement | null>(null);
   const isSettingsOpenRef = useRef(false);
   const isSettingsDirtyRef = useRef(false);
   const shouldRestoreSettingsButtonFocusRef = useRef(false);
@@ -182,6 +185,18 @@ export function App() {
     }
   }, [isSettingsOpen]);
 
+  useEffect(() => {
+    const threadElement = threadRef.current;
+    if (!threadElement) {
+      return;
+    }
+
+    threadElement.scrollTo({
+      top: threadElement.scrollHeight,
+      behavior: 'auto',
+    });
+  }, [activeSession?.id, activeThreadMessages.length]);
+
   function resetDraftSettings() {
     setDraftSettings(settings ?? DEFAULT_SETTINGS);
     isSettingsDirtyRef.current = false;
@@ -194,6 +209,15 @@ export function App() {
     setIsSettingsOpen(true);
   }
 
+  function toggleSessionsDrawer() {
+    setIsSessionsDrawerOpen((current) => !current);
+  }
+
+  function closeSessionsDrawer() {
+    setIsSessionsDrawerOpen(false);
+    sessionsButtonRef.current?.focus();
+  }
+
   function closeSettings() {
     resetDraftSettings();
     isSettingsOpenRef.current = false;
@@ -204,6 +228,20 @@ export function App() {
   function updateDraftSettings(update: Partial<AppSettings>) {
     isSettingsDirtyRef.current = true;
     setDraftSettings((current) => ({ ...current, ...update }));
+  }
+
+  function handleComposerKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    void handleComposerSend();
+  }
+
+  function handleSessionSelect(sessionId: string) {
+    setActiveSessionId(sessionId);
+    setIsSessionsDrawerOpen(false);
   }
 
   function handleSettingsDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
@@ -508,76 +546,39 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar" aria-label="Session sidebar placeholder">
-        <div className="sidebar__title">Sessions</div>
-        {sessions.length === 0 ? (
-          <div className="sidebar__empty">No sessions yet</div>
-        ) : (
-          <div className="sidebar__list">
-            {sessions.map((session) => (
-              <button
-                key={session.id}
-                type="button"
-                className={`session-chip${session.id === activeSession?.id ? ' session-chip--active' : ''}`}
-                onClick={() => setActiveSessionId(session.id)}
-              >
-                {session.title}
-              </button>
-            ))}
-          </div>
-        )}
-      </aside>
-
       <main className="workspace">
         <header className="chat-header" aria-label="Chat header">
-          <div>
-            <div className="eyebrow">Office Agent</div>
-            <h1 className="title">{activeSession?.title ?? 'Task pane shell'}</h1>
-            <div className="subtitle">{settings?.baseUrl ?? 'Settings not loaded yet'}</div>
+          <div className="chat-header__leading">
+            <button
+              type="button"
+              className="icon-button icon-button--ghost"
+              aria-label={isSessionsDrawerOpen ? 'Close sessions' : 'Open sessions'}
+              ref={sessionsButtonRef}
+              onClick={toggleSessionsDrawer}
+            >
+              <MenuIcon />
+            </button>
+
+            <div>
+              <div className="eyebrow">Office Agent</div>
+              <h1 className="title">{activeSession?.title ?? 'Task pane shell'}</h1>
+              <div className="subtitle">{settings?.baseUrl ?? 'Settings not loaded yet'}</div>
+              <div className="status-line">{bridgeStatus}</div>
+            </div>
           </div>
 
           <button
             type="button"
-            className="icon-button"
-            aria-label="Settings"
+            className="icon-button icon-button--ghost"
+            aria-label="Open settings"
             ref={settingsButtonRef}
             onClick={openSettings}
           >
-            Settings
+            <SettingsIcon />
           </button>
         </header>
 
-        <section className="selection-badge" aria-label="Selection badge placeholder" role="status">
-          <div className="selection-badge__label">Selection</div>
-          {selectionContext?.hasSelection ? (
-            <>
-              <div className="selection-badge__workbook">{selectionContext.workbookName}</div>
-              <div className="selection-badge__headline">
-                {selectionContext.sheetName} · {selectionContext.address}
-              </div>
-              <div>{selectionContext.isContiguous ? 'Contiguous selection' : 'Non-contiguous selection'}</div>
-              <div>
-                {selectionContext.rowCount} rows x {selectionContext.columnCount} columns
-              </div>
-              {selectionContext.headerPreview.length > 0 ? (
-                <div>Headers: {selectionContext.headerPreview.join(', ')}</div>
-              ) : null}
-              {selectionContext.sampleRows.map((sampleRow, index) => (
-                <div key={`${selectionContext.address}-sample-${index}`}>
-                  {sampleRow.join(' · ')}
-                </div>
-              ))}
-              {selectionContext.warningMessage ? (
-                <div className="selection-badge__warning">{selectionContext.warningMessage}</div>
-              ) : null}
-            </>
-          ) : (
-            <div>No selection available</div>
-          )}
-          <div className="selection-badge__status">{bridgeStatus}</div>
-        </section>
-
-        <section className="thread" aria-label="Message thread">
+        <section ref={threadRef} className="thread" aria-label="Message thread">
           {activeThreadMessages.map((message) => (
             <article key={message.id} className={`message message--${message.role}`}>
               <p>{message.content}</p>
@@ -593,29 +594,76 @@ export function App() {
           ))}
         </section>
 
-        {activePendingConfirmation ? (
-          <ConfirmationCard
-            preview={activePendingConfirmation.preview}
-            isBusy={isCommandPending}
-            onConfirm={handlePendingConfirmationConfirm}
-            onCancel={handlePendingConfirmationCancel}
-          />
-        ) : null}
+        <div className="composer-stack">
+          {activePendingConfirmation ? (
+            <ConfirmationCard
+              preview={activePendingConfirmation.preview}
+              isBusy={isCommandPending}
+              onConfirm={handlePendingConfirmationConfirm}
+              onCancel={handlePendingConfirmationCancel}
+            />
+          ) : null}
 
-        <footer className="composer" aria-label="Message composer">
-          <textarea
-            aria-label="Message composer"
-            placeholder="Type a message..."
-            rows={3}
-            value={composerValue}
-            disabled={isComposerDisabled}
-            onChange={(event) => setComposerValue(event.target.value)}
-          />
-          <button type="button" className="send-button" disabled={isComposerDisabled} onClick={handleComposerSend}>
-            Send
-          </button>
-        </footer>
+          <footer className="composer" aria-label="Message composer">
+            <textarea
+              aria-label="Message composer"
+              placeholder="Type a message..."
+              rows={3}
+              value={composerValue}
+              disabled={isComposerDisabled}
+              onChange={(event) => setComposerValue(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
+            />
+            <div className="composer__actions">
+              <section className="selection-pill" aria-label="Selection capsule" role="status">
+                {formatSelectionCapsule(selectionContext)}
+              </section>
+
+              <button type="button" className="send-button" disabled={isComposerDisabled} onClick={handleComposerSend}>
+                Send
+              </button>
+            </div>
+          </footer>
+        </div>
       </main>
+
+      {isSessionsDrawerOpen ? (
+        <div className="drawer-backdrop" onClick={closeSessionsDrawer}>
+          <aside
+            className="session-drawer"
+            aria-label="Sessions drawer"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="session-drawer__header">
+              <button
+                type="button"
+                className="icon-button icon-button--ghost"
+                aria-label="Close sessions"
+                onClick={closeSessionsDrawer}
+              >
+                <MenuIcon />
+              </button>
+              <div className="sidebar__title">Sessions</div>
+            </div>
+            {sessions.length === 0 ? (
+              <div className="sidebar__empty">No sessions yet</div>
+            ) : (
+              <div className="sidebar__list">
+                {sessions.map((session) => (
+                  <button
+                    key={session.id}
+                    type="button"
+                    className={`session-chip${session.id === activeSession?.id ? ' session-chip--active' : ''}`}
+                    onClick={() => handleSessionSelect(session.id)}
+                  >
+                    {session.title}
+                  </button>
+                ))}
+              </div>
+            )}
+          </aside>
+        </div>
+      ) : null}
 
       {isSettingsOpen ? (
         <div className="settings-backdrop">
@@ -632,8 +680,14 @@ export function App() {
                 <div className="eyebrow">Configuration</div>
                 <h2 className="settings-dialog__title">Settings</h2>
               </div>
-              <button type="button" className="icon-button" onClick={closeSettings} disabled={isSettingsSaving}>
-                Close
+              <button
+                type="button"
+                className="icon-button icon-button--ghost"
+                aria-label="Close"
+                onClick={closeSettings}
+                disabled={isSettingsSaving}
+              >
+                <CloseIcon />
               </button>
             </div>
 
@@ -881,6 +935,41 @@ function createMessageId() {
   }
 
   return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function formatSelectionCapsule(selectionContext: SelectionContext | null) {
+  if (!selectionContext?.hasSelection || !selectionContext.sheetName || !selectionContext.address) {
+    return 'No selection';
+  }
+
+  return `${selectionContext.sheetName} · ${selectionContext.address}`;
+}
+
+function MenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-svg">
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-svg">
+      <path d="M6 7h12M6 12h12M6 17h12M9 7v0M15 12v0M11 17v0" />
+      <circle cx="9" cy="7" r="2" />
+      <circle cx="15" cy="12" r="2" />
+      <circle cx="11" cy="17" r="2" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-svg">
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
 }
 
 export default App;
