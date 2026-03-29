@@ -14,9 +14,12 @@ namespace OfficeAgent.Infrastructure.Tests
         public void ProductWxsRunsAppSearchBeforeLaunchConditionsInBothSequences()
         {
             var document = LoadInstallerAuthoring();
+            var package = document.Root?.Element(WixNamespace + "Package");
 
-            var installUiSequence = document.Descendants(WixNamespace + "InstallUISequence").SingleOrDefault();
-            var installExecuteSequence = document.Descendants(WixNamespace + "InstallExecuteSequence").SingleOrDefault();
+            Assert.NotNull(package);
+
+            var installUiSequence = package?.Elements(WixNamespace + "InstallUISequence").SingleOrDefault();
+            var installExecuteSequence = package?.Elements(WixNamespace + "InstallExecuteSequence").SingleOrDefault();
 
             Assert.NotNull(installUiSequence);
             Assert.NotNull(installExecuteSequence);
@@ -28,37 +31,41 @@ namespace OfficeAgent.Infrastructure.Tests
         public void ProductWxsSearchesBothRegistryViewsForVstoRuntimeAndWebView2()
         {
             var document = LoadInstallerAuthoring();
-            var properties = document
-                .Descendants(WixNamespace + "Property")
+            var package = document.Root?.Element(WixNamespace + "Package");
+
+            Assert.NotNull(package);
+
+            var properties = package
+                ?.Elements(WixNamespace + "Property")
                 .ToDictionary(property => property.Attribute("Id")?.Value ?? string.Empty);
 
             AssertRegistrySearch(
-                properties["VSTORUNTIMEVERSION"],
+                properties?["VSTORUNTIMEVERSION"],
                 @"SOFTWARE\Microsoft\VSTO Runtime Setup\v4R",
                 "Version",
                 "always64");
             AssertRegistrySearch(
-                properties["VSTORUNTIMEWOW6432VERSION"],
+                properties?["VSTORUNTIMEWOW6432VERSION"],
                 @"SOFTWARE\Microsoft\VSTO Runtime Setup\v4R",
                 "Version",
                 "always32");
             AssertRegistrySearch(
-                properties["VSTORUNTIMEINSTALL"],
+                properties?["VSTORUNTIMEINSTALL"],
                 @"SOFTWARE\Microsoft\VSTO Runtime Setup\v4",
                 "Install",
                 "always64");
             AssertRegistrySearch(
-                properties["VSTORUNTIMEWOW6432INSTALL"],
+                properties?["VSTORUNTIMEWOW6432INSTALL"],
                 @"SOFTWARE\Microsoft\VSTO Runtime Setup\v4",
                 "Install",
                 "always32");
             AssertRegistrySearch(
-                properties["WEBVIEW2RUNTIMENATIVE"],
+                properties?["WEBVIEW2RUNTIMENATIVE"],
                 @"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
                 "pv",
                 "always64");
             AssertRegistrySearch(
-                properties["WEBVIEW2RUNTIMEWOW6432"],
+                properties?["WEBVIEW2RUNTIMEWOW6432"],
                 @"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
                 "pv",
                 "always32");

@@ -15,6 +15,33 @@
     <Launch
       Condition="Installed OR WEBVIEW2RUNTIMEWOW6432 OR WEBVIEW2RUNTIMENATIVE OR WEBVIEW2RUNTIMEUSER"
       Message="OfficeAgent requires the Microsoft Edge WebView2 Runtime. Install the Evergreen Runtime or your offline enterprise package, then run this installer again." />
+    <InstallUISequence>
+      <AppSearch Before="LaunchConditions" />
+    </InstallUISequence>
+    <InstallExecuteSequence>
+      <AppSearch Before="LaunchConditions" />
+    </InstallExecuteSequence>
+    <Property Id="VSTORUNTIMEVERSION">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\VSTO Runtime Setup\v4R" Name="Version" Type="raw" Bitness="always64" />
+    </Property>
+    <Property Id="VSTORUNTIMEWOW6432VERSION">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\VSTO Runtime Setup\v4R" Name="Version" Type="raw" Bitness="always32" />
+    </Property>
+    <Property Id="VSTORUNTIMEINSTALL">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\VSTO Runtime Setup\v4" Name="Install" Type="raw" Bitness="always64" />
+    </Property>
+    <Property Id="VSTORUNTIMEWOW6432INSTALL">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\VSTO Runtime Setup\v4" Name="Install" Type="raw" Bitness="always32" />
+    </Property>
+    <Property Id="WEBVIEW2RUNTIMEWOW6432">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" Bitness="always32" />
+    </Property>
+    <Property Id="WEBVIEW2RUNTIMENATIVE">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" Bitness="always64" />
+    </Property>
+    <Property Id="WEBVIEW2RUNTIMEUSER">
+      <RegistrySearch Root="HKCU" Key="Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" />
+    </Property>
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="INSTALLROOT" Name="OfficeAgent">
@@ -47,39 +74,6 @@
       <ComponentRef Id="ExcelAddInRegistry" />
     </Feature>
   </Package>
-
-  <Fragment>
-    <InstallUISequence>
-      <AppSearch Before="LaunchConditions" />
-    </InstallUISequence>
-    <InstallExecuteSequence>
-      <AppSearch Before="LaunchConditions" />
-    </InstallExecuteSequence>
-  </Fragment>
-
-  <Fragment>
-    <Property Id="VSTORUNTIMEVERSION">
-      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\VSTO Runtime Setup\v4R" Name="Version" Type="raw" Bitness="always64" />
-    </Property>
-    <Property Id="VSTORUNTIMEWOW6432VERSION">
-      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\VSTO Runtime Setup\v4R" Name="Version" Type="raw" Bitness="always32" />
-    </Property>
-    <Property Id="VSTORUNTIMEINSTALL">
-      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\VSTO Runtime Setup\v4" Name="Install" Type="raw" Bitness="always64" />
-    </Property>
-    <Property Id="VSTORUNTIMEWOW6432INSTALL">
-      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\VSTO Runtime Setup\v4" Name="Install" Type="raw" Bitness="always32" />
-    </Property>
-    <Property Id="WEBVIEW2RUNTIMEWOW6432">
-      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" Bitness="always32" />
-    </Property>
-    <Property Id="WEBVIEW2RUNTIMENATIVE">
-      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" Bitness="always64" />
-    </Property>
-    <Property Id="WEBVIEW2RUNTIMEUSER">
-      <RegistrySearch Root="HKCU" Key="Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" />
-    </Property>
-  </Fragment>
 
   <Fragment>
     <ComponentGroup Id="AddInPayload" Directory="ADDINFOLDER">
