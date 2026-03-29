@@ -5,5 +5,6 @@
 **/node_modules/
 **/dist/
 **/*.tsbuildinfo
+/artifacts/installer/
 *.user
 *.suo

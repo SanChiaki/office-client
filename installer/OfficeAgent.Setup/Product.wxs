@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="OfficeAgent for Excel"
+    Manufacturer="OfficeAgent"
+    Version="1.0.0.0"
+    UpgradeCode="4C90D0E4-7407-4F6C-8A52-1DCA5E3F8A7B"
+    Scope="perUser">
+    <SummaryInformation Description="OfficeAgent VSTO add-in for Excel" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of OfficeAgent is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Launch
+      Condition="Installed OR VSTORUNTIMEVERSION OR VSTORUNTIMEWOW6432VERSION"
+      Message="OfficeAgent requires the Microsoft Visual Studio Tools for Office Runtime 4.0 or later. Install the VSTO runtime, then run this installer again." />
+    <Launch
+      Condition="Installed OR WEBVIEW2RUNTIMEWOW6432 OR WEBVIEW2RUNTIMENATIVE OR WEBVIEW2RUNTIMEUSER"
+      Message="OfficeAgent requires the Microsoft Edge WebView2 Runtime. Install the Evergreen Runtime or your offline enterprise package, then run this installer again." />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLROOT" Name="OfficeAgent">
+        <Directory Id="ADDINFOLDER" Name="ExcelAddIn">
+          <Directory Id="FRONTENDFOLDER" Name="frontend">
+            <Directory Id="FRONTENDASSETSFOLDER" Name="assets" />
+          </Directory>
+          <Directory Id="RUNTIMESFOLDER" Name="runtimes">
+            <Directory Id="RUNTIMEARM64FOLDER" Name="win-arm64">
+              <Directory Id="RUNTIMEARM64NATIVEFOLDER" Name="native" />
+            </Directory>
+            <Directory Id="RUNTIMEX64FOLDER" Name="win-x64">
+              <Directory Id="RUNTIMEX64NATIVEFOLDER" Name="native" />
+            </Directory>
+            <Directory Id="RUNTIMEX86FOLDER" Name="win-x86">
+              <Directory Id="RUNTIMEX86NATIVEFOLDER" Name="native" />
+            </Directory>
+          </Directory>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="OfficeAgentFeature" Title="OfficeAgent for Excel" Level="1">
+      <ComponentGroupRef Id="AddInPayload" />
+      <ComponentGroupRef Id="FrontendPayload" />
+      <ComponentGroupRef Id="FrontendAssetPayload" />
+      <ComponentGroupRef Id="RuntimePayload" />
+      <ComponentGroupRef Id="RuntimePayloadX64" />
+      <ComponentGroupRef Id="RuntimePayloadX86" />
+      <ComponentRef Id="ExcelAddInRegistry" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <Property Id="VSTORUNTIMEVERSION">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\VSTO Runtime Setup\v4R" Name="Version" Type="raw" />
+    </Property>
+    <Property Id="VSTORUNTIMEWOW6432VERSION">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\WOW6432Node\Microsoft\VSTO Runtime Setup\v4R" Name="Version" Type="raw" />
+    </Property>
+    <Property Id="WEBVIEW2RUNTIMEWOW6432">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" />
+    </Property>
+    <Property Id="WEBVIEW2RUNTIMENATIVE">
+      <RegistrySearch Root="HKLM" Key="SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" />
+    </Property>
+    <Property Id="WEBVIEW2RUNTIMEUSER">
+      <RegistrySearch Root="HKCU" Key="Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" Name="pv" Type="raw" />
+    </Property>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="AddInPayload" Directory="ADDINFOLDER">
+      <Component Id="cmpOfficeToolsUtilities" Guid="*">
+        <File Source="$(var.PublishRoot)\Microsoft.Office.Tools.Common.v4.0.Utilities.dll" />
+      </Component>
+      <Component Id="cmpWebView2Core" Guid="*">
+        <File Source="$(var.PublishRoot)\Microsoft.Web.WebView2.Core.dll" />
+      </Component>
+      <Component Id="cmpWebView2WinForms" Guid="*">
+        <File Source="$(var.PublishRoot)\Microsoft.Web.WebView2.WinForms.dll" />
+      </Component>
+      <Component Id="cmpWebView2Wpf" Guid="*">
+        <File Source="$(var.PublishRoot)\Microsoft.Web.WebView2.Wpf.dll" />
+      </Component>
+      <Component Id="cmpNewtonsoftJson" Guid="*">
+        <File Source="$(var.PublishRoot)\Newtonsoft.Json.dll" />
+      </Component>
+      <Component Id="cmpOfficeAgentCore" Guid="*">
+        <File Source="$(var.PublishRoot)\OfficeAgent.Core.dll" />
+      </Component>
+      <Component Id="cmpOfficeAgentExcelAddInDll" Guid="*">
+        <File Id="filOfficeAgentExcelAddInDll" Source="$(var.PublishRoot)\OfficeAgent.ExcelAddIn.dll" />
+      </Component>
+      <Component Id="cmpOfficeAgentExcelAddInManifest" Guid="*">
+        <File Source="$(var.PublishRoot)\OfficeAgent.ExcelAddIn.dll.manifest" />
+      </Component>
+      <Component Id="cmpOfficeAgentExcelAddInVsto" Guid="*">
+        <File Id="filOfficeAgentExcelAddInVsto" Source="$(var.PublishRoot)\OfficeAgent.ExcelAddIn.vsto" />
+      </Component>
+      <Component Id="cmpOfficeAgentInfrastructure" Guid="*">
+        <File Source="$(var.PublishRoot)\OfficeAgent.Infrastructure.dll" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="FrontendPayload" Directory="FRONTENDFOLDER">
+      <Component Id="cmpFrontendIndex" Guid="*">
+        <File Source="$(var.PublishRoot)\frontend\index.html" />
+      </Component>
+    </ComponentGroup>
+    <ComponentGroup Id="FrontendAssetPayload" Directory="FRONTENDASSETSFOLDER">
+      <Files Include="$(var.PublishRoot)\frontend\assets\**" />
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="RuntimePayload" Directory="RUNTIMEARM64NATIVEFOLDER">
+      <Component Id="cmpRuntimeArm64Loader" Guid="*">
+        <File Source="$(var.PublishRoot)\runtimes\win-arm64\native\WebView2Loader.dll" />
+      </Component>
+    </ComponentGroup>
+    <ComponentGroup Id="RuntimePayloadX64" Directory="RUNTIMEX64NATIVEFOLDER">
+      <Component Id="cmpRuntimeX64Loader" Guid="*">
+        <File Source="$(var.PublishRoot)\runtimes\win-x64\native\WebView2Loader.dll" />
+      </Component>
+    </ComponentGroup>
+    <ComponentGroup Id="RuntimePayloadX86" Directory="RUNTIMEX86NATIVEFOLDER">
+      <Component Id="cmpRuntimeX86Loader" Guid="*">
+        <File Source="$(var.PublishRoot)\runtimes\win-x86\native\WebView2Loader.dll" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <Component Id="ExcelAddInRegistry" Directory="ADDINFOLDER" Guid="*">
+      <RegistryKey
+        Root="HKCU"
+        Key="Software\Microsoft\Office\Excel\Addins\OfficeAgent.ExcelAddIn"
+        ForceCreateOnInstall="yes"
+        ForceDeleteOnUninstall="yes">
+        <RegistryValue Name="Description" Type="string" Value="OfficeAgent.ExcelAddIn" KeyPath="yes" />
+        <RegistryValue Name="FriendlyName" Type="string" Value="OfficeAgent.ExcelAddIn" />
+        <RegistryValue Name="LoadBehavior" Type="integer" Value="3" />
+        <RegistryValue Name="Manifest" Type="string" Value="file:///[#filOfficeAgentExcelAddInVsto]|vstolocal" />
+      </RegistryKey>
+    </Component>
+  </Fragment>
+</Wix>
