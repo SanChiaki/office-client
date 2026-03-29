@@ -21,7 +21,8 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
             FileSessionStore sessionStore,
             FileSettingsStore settingsStore,
             IExcelContextService excelContextService,
-            IExcelCommandExecutor excelCommandExecutor)
+            IExcelCommandExecutor excelCommandExecutor,
+            IAgentOrchestrator agentOrchestrator)
         {
             Dock = DockStyle.Fill;
 
@@ -31,7 +32,7 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
             };
             Controls.Add(webView);
 
-            bootstrapper = new WebViewBootstrapper(webView, sessionStore, settingsStore, excelContextService, excelCommandExecutor);
+            bootstrapper = new WebViewBootstrapper(webView, sessionStore, settingsStore, excelContextService, excelCommandExecutor, agentOrchestrator);
             Load += TaskPaneHostControl_Load;
         }
 

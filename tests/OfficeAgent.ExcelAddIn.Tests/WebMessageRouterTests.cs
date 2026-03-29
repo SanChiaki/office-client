@@ -2,7 +2,9 @@ using System;
 using System.IO;
 using System.Reflection;
 using OfficeAgent.Core.Models;
+using OfficeAgent.Core.Orchestration;
 using OfficeAgent.Core.Services;
+using OfficeAgent.Core.Skills;
 using OfficeAgent.Infrastructure.Security;
 using OfficeAgent.Infrastructure.Storage;
 using Xunit;
@@ -231,6 +233,45 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Equal(0, executor.PreviewCalls);
         }
 
+        [Fact]
+        public void RunSkillRoutesUploadRequestsThroughTheAgentOrchestrator()
+        {
+            var sessionStore = new FileSessionStore(Path.Combine(tempDirectory, "sessions"));
+            var settingsStore = new FileSettingsStore(
+                Path.Combine(tempDirectory, "settings.json"),
+                new DpapiSecretProtector());
+            var orchestrator = new FakeAgentOrchestrator
+            {
+                Result = new AgentCommandResult
+                {
+                    Route = AgentRouteTypes.Skill,
+                    SkillName = SkillNames.UploadData,
+                    RequiresConfirmation = true,
+                    Status = "preview",
+                    Message = "Review the upload payload before sending it to 项目A.",
+                    UploadPreview = new UploadPreview
+                    {
+                        ProjectName = "项目A",
+                    },
+                },
+            };
+
+            var router = CreateRouter(
+                sessionStore,
+                settingsStore,
+                new FakeExcelContextService(SelectionContext.Empty("No selection available.")),
+                new FakeExcelCommandExecutor(),
+                orchestrator);
+            var responseJson = InvokeRoute(
+                router,
+                "{\"type\":\"bridge.runSkill\",\"requestId\":\"req-1\",\"payload\":{\"userInput\":\"把选中数据上传到项目A\",\"confirmed\":false}}");
+
+            Assert.Contains("\"ok\":true", responseJson);
+            Assert.Contains("\"route\":\"skill\"", responseJson);
+            Assert.Contains("\"skillName\":\"upload_data\"", responseJson);
+            Assert.Equal("把选中数据上传到项目A", orchestrator.LastEnvelope.UserInput);
+        }
+
         public void Dispose()
         {
             if (Directory.Exists(tempDirectory))
@@ -245,7 +286,8 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 sessionStore,
                 settingsStore,
                 new FakeExcelContextService(SelectionContext.Empty("No selection available.")),
-                new FakeExcelCommandExecutor());
+                new FakeExcelCommandExecutor(),
+                new FakeAgentOrchestrator());
         }
 
         private static object CreateRouter(
@@ -253,6 +295,21 @@ namespace OfficeAgent.ExcelAddIn.Tests
             FileSettingsStore settingsStore,
             IExcelContextService selectionContextService,
             IExcelCommandExecutor excelCommandExecutor)
+        {
+            return CreateRouter(
+                sessionStore,
+                settingsStore,
+                selectionContextService,
+                excelCommandExecutor,
+                new FakeAgentOrchestrator());
+        }
+
+        private static object CreateRouter(
+            FileSessionStore sessionStore,
+            FileSettingsStore settingsStore,
+            IExcelContextService selectionContextService,
+            IExcelCommandExecutor excelCommandExecutor,
+            IAgentOrchestrator agentOrchestrator)
         {
             var addInAssembly = Assembly.LoadFrom(ResolveAddInAssemblyPath());
             var routerType = addInAssembly.GetType(
@@ -262,7 +319,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 routerType,
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
                 binder: null,
-                args: new object[] { sessionStore, settingsStore, selectionContextService, excelCommandExecutor },
+                args: new object[] { sessionStore, settingsStore, selectionContextService, excelCommandExecutor, agentOrchestrator },
                 culture: null);
         }
 
@@ -338,6 +395,24 @@ namespace OfficeAgent.ExcelAddIn.Tests
             {
                 ExecuteCalls++;
                 return ExecuteResult;
+            }
+        }
+
+        private sealed class FakeAgentOrchestrator : IAgentOrchestrator
+        {
+            public AgentCommandEnvelope LastEnvelope { get; private set; }
+
+            public AgentCommandResult Result { get; set; } = new AgentCommandResult
+            {
+                Route = AgentRouteTypes.Chat,
+                Status = "completed",
+                Message = "General chat routing is not implemented yet.",
+            };
+
+            public AgentCommandResult Execute(AgentCommandEnvelope envelope)
+            {
+                LastEnvelope = envelope;
+                return Result;
             }
         }
     }

@@ -49,6 +49,24 @@ namespace OfficeAgent.Infrastructure.Tests
         }
 
         [Fact]
+        public void SaveNormalizesBaseUrlByTrimmingWhitespaceAndTrailingSlashes()
+        {
+            var settingsPath = Path.Combine(tempDirectory, "settings.json");
+            var store = new FileSettingsStore(settingsPath, new DpapiSecretProtector());
+
+            store.Save(new OfficeAgent.Core.Models.AppSettings
+            {
+                ApiKey = "secret-token",
+                BaseUrl = " https://api.internal.example/// ",
+                Model = "gpt-5-mini",
+            });
+
+            var loaded = store.Load();
+
+            Assert.Equal("https://api.internal.example", loaded.BaseUrl);
+        }
+
+        [Fact]
         public void LoadRecoversWhenProtectedApiKeyCannotBeDecrypted()
         {
             var settingsPath = Path.Combine(tempDirectory, "settings.json");

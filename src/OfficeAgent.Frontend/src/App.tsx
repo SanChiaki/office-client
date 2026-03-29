@@ -9,6 +9,9 @@ import type {
   ExcelCommandResult,
   ExcelTableData,
   SelectionContext,
+  SkillRequestEnvelope,
+  SkillResult,
+  UploadPreview,
 } from './types/bridge';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -25,7 +28,9 @@ type ThreadMessage = {
 };
 
 type PendingConfirmation = {
+  kind: 'excel' | 'skill';
   command: ExcelCommand;
+  skillRequest?: SkillRequestEnvelope;
   preview: ExcelCommandPreview;
 };
 
@@ -158,6 +163,7 @@ export function App() {
     : createInitialThreadMessages();
   const activePendingConfirmation = activeSession ? pendingConfirmations[activeSession.id] ?? null : null;
   const isCommandPending = activeSession ? pendingCommandSessions[activeSession.id] === true : false;
+  const isComposerDisabled = isCommandPending || activePendingConfirmation !== null;
 
   useEffect(() => {
     if (isSettingsOpen) {
@@ -249,7 +255,7 @@ export function App() {
   async function handleComposerSend() {
     const trimmedValue = composerValue.trim();
     const sessionId = activeSession?.id ?? activeSessionId;
-    if (!trimmedValue || !sessionId || isCommandPending) {
+    if (!trimmedValue || !sessionId || isComposerDisabled) {
       return;
     }
 
@@ -261,16 +267,15 @@ export function App() {
     setComposerValue('');
 
     const command = parseExcelCommand(trimmedValue);
-    if (!command) {
-      appendThreadMessage(sessionId, {
-        id: createMessageId(),
-        role: 'assistant',
-        content: 'Direct Excel commands currently support: read selection, add sheet <name>, rename sheet <from> to <to>, delete sheet <name>, and write range <address> = row1 | row2.',
-      });
+    if (command) {
+      await dispatchExcelCommand(command, sessionId);
       return;
     }
 
-    await dispatchExcelCommand(command, sessionId);
+    await dispatchSkill({
+      userInput: trimmedValue,
+      confirmed: false,
+    }, sessionId);
   }
 
   async function handlePendingConfirmationConfirm() {
@@ -278,14 +283,24 @@ export function App() {
       return;
     }
 
-    await dispatchExcelCommand({
-      ...activePendingConfirmation.command,
-      confirmed: true,
-    }, activeSession.id);
+    if (activePendingConfirmation.kind === 'excel') {
+      await dispatchExcelCommand({
+        ...activePendingConfirmation.command,
+        confirmed: true,
+      }, activeSession.id);
+      return;
+    }
+
+    if (activePendingConfirmation.skillRequest) {
+      await dispatchSkill({
+        ...activePendingConfirmation.skillRequest,
+        confirmed: true,
+      }, activeSession.id);
+    }
   }
 
   function handlePendingConfirmationCancel() {
-    if (!activeSession?.id) {
+    if (!activeSession?.id || !activePendingConfirmation) {
       return;
     }
 
@@ -293,7 +308,9 @@ export function App() {
     appendThreadMessage(activeSession.id, {
       id: createMessageId(),
       role: 'system',
-      content: 'Cancelled the pending Excel change.',
+      content: activePendingConfirmation.kind === 'skill'
+        ? 'Cancelled the pending upload.'
+        : 'Cancelled the pending Excel change.',
     });
   }
 
@@ -308,6 +325,7 @@ export function App() {
 
       if (result.requiresConfirmation && result.preview) {
         setSessionPendingConfirmation(sessionId, {
+          kind: 'excel',
           command,
           preview: result.preview,
         });
@@ -326,6 +344,43 @@ export function App() {
         id: createMessageId(),
         role: 'assistant',
         content: error instanceof Error ? error.message : 'Excel command failed.',
+      });
+    } finally {
+      setCommandPending(sessionId, false);
+    }
+  }
+
+  async function dispatchSkill(request: SkillRequestEnvelope, sessionId: string) {
+    setCommandPending(sessionId, true);
+
+    try {
+      const result = await nativeBridge.runSkill(request);
+      if (result.requiresConfirmation && result.preview) {
+        setSessionPendingConfirmation(sessionId, {
+          kind: 'skill',
+          command: {
+            commandType: '',
+            confirmed: false,
+          },
+          skillRequest: {
+            userInput: request.userInput,
+            skillName: result.skillName,
+            confirmed: false,
+            uploadPreview: result.uploadPreview,
+          },
+          preview: result.preview,
+        });
+        appendThreadMessage(sessionId, createSkillResultMessage(result));
+        return;
+      }
+
+      setSessionPendingConfirmation(sessionId, null);
+      appendThreadMessage(sessionId, createSkillResultMessage(result));
+    } catch (error) {
+      appendThreadMessage(sessionId, {
+        id: createMessageId(),
+        role: 'assistant',
+        content: error instanceof Error ? error.message : 'Skill execution failed.',
       });
     } finally {
       setCommandPending(sessionId, false);
@@ -477,10 +532,10 @@ export function App() {
             placeholder="Type a message..."
             rows={3}
             value={composerValue}
-            disabled={isCommandPending}
+            disabled={isComposerDisabled}
             onChange={(event) => setComposerValue(event.target.value)}
           />
-          <button type="button" className="send-button" disabled={isCommandPending} onClick={handleComposerSend}>
+          <button type="button" className="send-button" disabled={isComposerDisabled} onClick={handleComposerSend}>
             Send
           </button>
         </footer>
@@ -605,6 +660,28 @@ function createResultMessage(result: ExcelCommandResult): ThreadMessage {
     role: 'assistant',
     content: result.message,
     table: result.table,
+  };
+}
+
+function createSkillResultMessage(result: SkillResult): ThreadMessage {
+  return {
+    id: createMessageId(),
+    role: 'assistant',
+    content: result.message,
+    table: createTableFromUploadPreview(result.uploadPreview),
+  };
+}
+
+function createTableFromUploadPreview(preview?: UploadPreview): ExcelTableData | undefined {
+  if (!preview) {
+    return undefined;
+  }
+
+  return {
+    sheetName: preview.sheetName,
+    address: preview.address,
+    headers: preview.headers,
+    rows: preview.rows,
   };
 }
 

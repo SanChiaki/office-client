@@ -1,13 +1,17 @@
-import type {
+﻿import type {
   AppSettings,
   BridgeErrorPayload,
   BridgeEventEnvelope,
   BridgeRequestEnvelope,
   BridgeResponseEnvelope,
   ExcelCommand,
+  ExcelCommandPreview,
   ExcelCommandResult,
   SelectionContext,
   SessionState,
+  SkillRequestEnvelope,
+  SkillResult,
+  UploadPreview,
   PingPayload,
   WebViewHostLike,
   WebViewMessageEventLike,
@@ -149,8 +153,8 @@ export class NativeBridge {
     return this.invoke<ExcelCommand, ExcelCommandResult>(BRIDGE_TYPES.executeExcelCommand, payload);
   }
 
-  runSkill(payload: unknown) {
-    return this.invoke(BRIDGE_TYPES.runSkill, payload);
+  runSkill(payload: SkillRequestEnvelope) {
+    return this.invoke<SkillRequestEnvelope, SkillResult>(BRIDGE_TYPES.runSkill, payload);
   }
 
   onSelectionContextChanged(listener: SelectionContextListener) {
@@ -193,6 +197,14 @@ export class NativeBridge {
       if (type === BRIDGE_TYPES.executeExcelCommand) {
         try {
           return Promise.resolve(createBrowserPreviewCommandResult(validateBrowserPreviewCommand(payload as ExcelCommand)) as TResult);
+        } catch (error) {
+          return Promise.reject(error);
+        }
+      }
+
+      if (type === BRIDGE_TYPES.runSkill) {
+        try {
+          return Promise.resolve(createBrowserPreviewSkillResult(validateBrowserPreviewSkill(payload as SkillRequestEnvelope)) as TResult);
         } catch (error) {
           return Promise.reject(error);
         }
@@ -442,3 +454,150 @@ function validateBrowserPreviewCommand(command: ExcelCommand): ExcelCommand {
 
   return command;
 }
+
+function validateBrowserPreviewSkill(payload: SkillRequestEnvelope): SkillRequestEnvelope {
+  if (!payload?.userInput?.trim()) {
+    throw new NativeBridgeError({
+      code: 'invalid_command',
+      message: 'Skill execution requires user input.',
+    });
+  }
+
+  if (payload.confirmed && !payload.uploadPreview) {
+    throw new NativeBridgeError({
+      code: 'invalid_command',
+      message: 'upload_data confirmation requires an upload preview payload.',
+    });
+  }
+
+  if (payload.confirmed && !hasCompleteUploadPreview(payload.uploadPreview)) {
+    throw new NativeBridgeError({
+      code: 'invalid_command',
+      message: 'upload_data confirmation requires a complete preview payload.',
+    });
+  }
+
+  return {
+    ...payload,
+    userInput: payload.userInput.trim(),
+  };
+}
+
+function hasCompleteUploadPreview(preview: UploadPreview | undefined): preview is UploadPreview {
+  return Boolean(
+    preview &&
+    typeof preview.projectName === 'string' &&
+    preview.projectName.trim() &&
+    typeof preview.sheetName === 'string' &&
+    preview.sheetName.trim() &&
+    typeof preview.address === 'string' &&
+    preview.address.trim() &&
+    Array.isArray(preview.headers) &&
+    preview.headers.length > 0 &&
+    Array.isArray(preview.rows) &&
+    Array.isArray(preview.records),
+  );
+}
+
+function extractResolvedBrowserPreviewProjectName(userInput: string): string {
+  const trimmedInput = userInput.trim().replace(/^\/upload_data\s*/i, '');
+  const chineseUploadTo = '\u4E0A\u4F20\u5230';
+  const chineseIndex = trimmedInput.lastIndexOf(chineseUploadTo);
+  if (chineseIndex >= 0) {
+    const projectName = trimmedInput.slice(chineseIndex + chineseUploadTo.length).trim();
+    if (projectName) {
+      return projectName;
+    }
+  }
+
+  const englishMatch = trimmedInput.match(/\bto\s+(.+)$/i);
+  if (englishMatch?.[1]) {
+    return englishMatch[1].trim();
+  }
+
+  throw new NativeBridgeError({
+    code: 'invalid_command',
+    message: 'upload_data requires a target project name.',
+  });
+}
+
+function matchesUploadDataSkillInput(userInput: string): boolean {
+  const trimmedInput = userInput.trim();
+  return (
+    trimmedInput.startsWith('/upload_data') ||
+    trimmedInput.includes('\u4E0A\u4F20\u5230') ||
+    /\bupload\b.+\bto\s+.+$/i.test(trimmedInput)
+  );
+}
+
+function createBrowserPreviewSkillResult(payload: SkillRequestEnvelope): SkillResult {
+  if (!isUploadDataSkillInput(payload.userInput)) {
+    return {
+      route: 'chat',
+      requiresConfirmation: false,
+      status: 'completed',
+      message: 'General chat routing is not implemented yet. Use /upload_data ... or a direct Excel command.',
+    };
+  }
+
+  const uploadPreview = payload.uploadPreview ?? buildBrowserPreviewUpload(payload.userInput);
+  const preview: ExcelCommandPreview = {
+    title: 'Upload selected data',
+    summary: `Upload ${uploadPreview.records.length} row(s) to ${uploadPreview.projectName}`,
+    details: [
+      `Source: ${uploadPreview.sheetName}!${uploadPreview.address}`,
+      `Fields: ${uploadPreview.headers.join(', ')}`,
+    ],
+  };
+
+  if (!payload.confirmed) {
+    return {
+      route: 'skill',
+      skillName: 'upload_data',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: `Review the upload payload before sending it to ${uploadPreview.projectName}.`,
+      preview,
+      uploadPreview,
+    };
+  }
+
+  return {
+    route: 'skill',
+    skillName: 'upload_data',
+    requiresConfirmation: false,
+    status: 'completed',
+    message: `Preview-only upload completed for ${uploadPreview.projectName} (${uploadPreview.records.length} row(s)).`,
+    preview,
+    uploadPreview,
+  };
+}
+
+function buildBrowserPreviewUpload(userInput: string): UploadPreview {
+  const projectName = extractBrowserPreviewProjectName(userInput);
+  const rows = [
+    ['Project A', 'CN'],
+    ['Project B', 'US'],
+  ];
+
+  return {
+    projectName,
+    sheetName: 'Sheet1',
+    address: 'A1:C3',
+    headers: ['Name', 'Region'],
+    rows,
+    records: rows.map((row) => ({
+      Name: row[0],
+      Region: row[1],
+    })),
+  };
+}
+
+function extractBrowserPreviewProjectName(userInput: string): string {
+  return extractResolvedBrowserPreviewProjectName(userInput);
+}
+
+function isUploadDataSkillInput(userInput: string): boolean {
+  return matchesUploadDataSkillInput(userInput);
+}
+

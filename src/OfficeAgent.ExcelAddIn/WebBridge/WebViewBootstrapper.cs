@@ -22,10 +22,11 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
             FileSessionStore sessionStore,
             FileSettingsStore settingsStore,
             IExcelContextService excelContextService,
-            IExcelCommandExecutor excelCommandExecutor)
+            IExcelCommandExecutor excelCommandExecutor,
+            IAgentOrchestrator agentOrchestrator)
         {
             this.webView = webView;
-            messageRouter = new WebMessageRouter(sessionStore, settingsStore, excelContextService, excelCommandExecutor);
+            messageRouter = new WebMessageRouter(sessionStore, settingsStore, excelContextService, excelCommandExecutor, agentOrchestrator);
         }
 
         public async Task InitializeAsync()

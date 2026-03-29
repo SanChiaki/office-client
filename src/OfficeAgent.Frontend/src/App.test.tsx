@@ -14,6 +14,7 @@ vi.mock('./bridge/nativeBridge', () => ({
     getSettings: vi.fn(),
     saveSettings: vi.fn(),
     executeExcelCommand: vi.fn(),
+    runSkill: vi.fn(),
   },
 }));
 
@@ -97,6 +98,12 @@ beforeEach(() => {
         ['Project B', 'US', '36'],
       ],
     },
+  });
+  mockedBridge.runSkill.mockResolvedValue({
+    route: 'chat',
+    requiresConfirmation: false,
+    status: 'completed',
+    message: 'General chat routing is not implemented yet. Use /upload_data ... or a direct Excel command.',
   });
 });
 
@@ -473,6 +480,50 @@ describe('App shell', () => {
     ).toBeInTheDocument();
   });
 
+  it('disables the composer while a confirmation card is pending', async () => {
+    const user = userEvent.setup();
+    mockedBridge.runSkill.mockResolvedValueOnce({
+      route: 'skill',
+      skillName: 'upload_data',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: 'Review the upload payload before sending it to Project A.',
+      preview: {
+        title: 'Upload selected data',
+        summary: 'Upload 2 row(s) to Project A',
+        details: ['Source: Sheet1!A1:C3', 'Fields: Name, Region'],
+      },
+      uploadPreview: {
+        projectName: 'Project A',
+        sheetName: 'Sheet1',
+        address: 'A1:C3',
+        headers: ['Name', 'Region'],
+        rows: [
+          ['Project A', 'CN'],
+          ['Project B', 'US'],
+        ],
+        records: [
+          { Name: 'Project A', Region: 'CN' },
+          { Name: 'Project B', Region: 'US' },
+        ],
+      },
+    });
+
+    render(<App />);
+
+    const composer = screen.getByRole('textbox', { name: /message composer/i });
+    const sendButton = screen.getByRole('button', { name: /send/i });
+    await user.type(composer, '/upload_data upload selected data to Project A');
+    await user.click(sendButton);
+
+    expect(
+      await screen.findByText(/confirm excel action/i),
+    ).toBeInTheDocument();
+    expect(composer).toBeDisabled();
+    expect(sendButton).toBeDisabled();
+    expect(mockedBridge.runSkill).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps command results in the session that launched them when the user switches threads mid-flight', async () => {
     const user = userEvent.setup();
     const pendingCommand = createDeferred<{
@@ -511,6 +562,72 @@ describe('App shell', () => {
 
     expect(
       await screen.findByText(/read selection from sheet1 a1:c4/i),
+    ).toBeInTheDocument();
+  });
+
+  it('routes upload_data through the skill bridge and confirms with the returned preview payload', async () => {
+    const user = userEvent.setup();
+    const uploadPreview = {
+      projectName: '项目A',
+      sheetName: 'Sheet1',
+      address: 'A1:C3',
+      headers: ['Name', 'Region'],
+      rows: [
+        ['Project A', 'CN'],
+        ['Project B', 'US'],
+      ],
+      records: [
+        { Name: 'Project A', Region: 'CN' },
+        { Name: 'Project B', Region: 'US' },
+      ],
+    };
+
+    mockedBridge.runSkill
+      .mockResolvedValueOnce({
+        route: 'skill',
+        skillName: 'upload_data',
+        requiresConfirmation: true,
+        status: 'preview',
+        message: 'Review the upload payload before sending it to 项目A.',
+        preview: {
+          title: 'Upload selected data',
+          summary: 'Upload 2 row(s) to 项目A',
+          details: ['Source: Sheet1!A1:C3', 'Fields: Name, Region'],
+        },
+        uploadPreview,
+      })
+      .mockResolvedValueOnce({
+        route: 'skill',
+        skillName: 'upload_data',
+        requiresConfirmation: false,
+        status: 'completed',
+        message: 'Uploaded 2 row(s) to 项目A.',
+        uploadPreview,
+      });
+
+    render(<App />);
+
+    await user.type(screen.getByRole('textbox', { name: /message composer/i }), '把选中数据上传到项目A');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+
+    expect(mockedBridge.runSkill).toHaveBeenNthCalledWith(1, {
+      userInput: '把选中数据上传到项目A',
+      confirmed: false,
+    });
+    expect(
+      await screen.findByText(/upload 2 row\(s\) to 项目a/i),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+    expect(mockedBridge.runSkill).toHaveBeenNthCalledWith(2, {
+      userInput: '把选中数据上传到项目A',
+      skillName: 'upload_data',
+      confirmed: true,
+      uploadPreview,
+    });
+    expect(
+      await screen.findByText(/uploaded 2 row\(s\) to 项目a/i),
     ).toBeInTheDocument();
   });
 });

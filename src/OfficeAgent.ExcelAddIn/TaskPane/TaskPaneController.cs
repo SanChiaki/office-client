@@ -10,6 +10,7 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
         private readonly ThisAddIn addIn;
         private readonly IExcelContextService excelContextService;
         private readonly IExcelCommandExecutor excelCommandExecutor;
+        private readonly IAgentOrchestrator agentOrchestrator;
         private readonly FileSessionStore sessionStore;
         private readonly FileSettingsStore settingsStore;
         private Microsoft.Office.Tools.CustomTaskPane taskPane;
@@ -20,13 +21,15 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
             FileSessionStore sessionStore,
             FileSettingsStore settingsStore,
             IExcelContextService excelContextService,
-            IExcelCommandExecutor excelCommandExecutor)
+            IExcelCommandExecutor excelCommandExecutor,
+            IAgentOrchestrator agentOrchestrator)
         {
             this.addIn = addIn;
             this.sessionStore = sessionStore;
             this.settingsStore = settingsStore;
             this.excelContextService = excelContextService;
             this.excelCommandExecutor = excelCommandExecutor;
+            this.agentOrchestrator = agentOrchestrator;
         }
 
         public void Toggle()
@@ -58,7 +61,7 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
                 return;
             }
 
-            hostControl = new TaskPaneHostControl(sessionStore, settingsStore, excelContextService, excelCommandExecutor);
+            hostControl = new TaskPaneHostControl(sessionStore, settingsStore, excelContextService, excelCommandExecutor, agentOrchestrator);
             taskPane = addIn.CustomTaskPanes.Add(hostControl, "OfficeAgent");
             taskPane.DockPosition = MsoCTPDockPosition.msoCTPDockPositionRight;
             taskPane.Width = 420;

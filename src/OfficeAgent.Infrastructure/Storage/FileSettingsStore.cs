@@ -36,7 +36,7 @@ namespace OfficeAgent.Infrastructure.Storage
                 var settings = new AppSettings
                 {
                     ApiKey = string.Empty,
-                    BaseUrl = string.IsNullOrWhiteSpace(persisted.BaseUrl) ? "https://api.example.com" : persisted.BaseUrl,
+                    BaseUrl = AppSettings.NormalizeBaseUrl(persisted.BaseUrl),
                     Model = string.IsNullOrWhiteSpace(persisted.Model) ? "gpt-5-mini" : persisted.Model,
                 };
 
@@ -66,7 +66,7 @@ namespace OfficeAgent.Infrastructure.Storage
             var persisted = new PersistedSettings
             {
                 EncryptedApiKey = secretProtector.Protect(settings?.ApiKey ?? string.Empty),
-                BaseUrl = string.IsNullOrWhiteSpace(settings?.BaseUrl) ? "https://api.example.com" : settings.BaseUrl,
+                BaseUrl = AppSettings.NormalizeBaseUrl(settings?.BaseUrl),
                 Model = string.IsNullOrWhiteSpace(settings?.Model) ? "gpt-5-mini" : settings.Model,
             };
 

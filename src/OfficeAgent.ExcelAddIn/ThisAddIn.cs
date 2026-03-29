@@ -1,8 +1,11 @@
 using System;
 using System.IO;
+using OfficeAgent.Core.Orchestration;
 using OfficeAgent.Core.Services;
+using OfficeAgent.Core.Skills;
 using OfficeAgent.ExcelAddIn.Excel;
 using OfficeAgent.ExcelAddIn.TaskPane;
+using OfficeAgent.Infrastructure.Http;
 using OfficeAgent.Infrastructure.Security;
 using OfficeAgent.Infrastructure.Storage;
 using ExcelInterop = Microsoft.Office.Interop.Excel;
@@ -16,6 +19,7 @@ namespace OfficeAgent.ExcelAddIn
         internal FileSettingsStore SettingsStore { get; private set; }
         internal IExcelContextService ExcelContextService { get; private set; }
         internal IExcelCommandExecutor ExcelCommandExecutor { get; private set; }
+        internal IAgentOrchestrator AgentOrchestrator { get; private set; }
 
         private void ThisAddIn_Startup(object sender, EventArgs e)
         {
@@ -28,7 +32,9 @@ namespace OfficeAgent.ExcelAddIn
                 new DpapiSecretProtector());
             ExcelContextService = new ExcelSelectionContextService(Application);
             ExcelCommandExecutor = new ExcelInteropAdapter(Application, ExcelContextService);
-            TaskPaneController = new TaskPaneController(this, SessionStore, SettingsStore, ExcelContextService, ExcelCommandExecutor);
+            AgentOrchestrator = new AgentOrchestrator(new SkillRegistry(
+                new UploadDataSkill(ExcelCommandExecutor, new BusinessApiClient(SettingsStore))));
+            TaskPaneController = new TaskPaneController(this, SessionStore, SettingsStore, ExcelContextService, ExcelCommandExecutor, AgentOrchestrator);
             Application.SheetSelectionChange += Application_SheetSelectionChange;
         }
 

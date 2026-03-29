@@ -80,6 +80,32 @@ export interface ExcelCommandResult {
   selectionContext?: SelectionContext;
 }
 
+export interface UploadPreview {
+  projectName: string;
+  sheetName: string;
+  address: string;
+  headers: string[];
+  rows: string[][];
+  records: Array<Record<string, string>>;
+}
+
+export interface SkillRequestEnvelope {
+  userInput: string;
+  skillName?: string;
+  confirmed: boolean;
+  uploadPreview?: UploadPreview;
+}
+
+export interface SkillResult {
+  route: string;
+  skillName?: string;
+  requiresConfirmation: boolean;
+  status: string;
+  message: string;
+  preview?: ExcelCommandPreview;
+  uploadPreview?: UploadPreview;
+}
+
 export interface BridgeResponseEnvelope<TPayload = unknown> {
   type: string;
   requestId: string;

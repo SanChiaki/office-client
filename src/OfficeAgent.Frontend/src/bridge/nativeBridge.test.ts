@@ -33,6 +33,10 @@ function createMockWebView(): MockWebView {
 }
 
 describe('NativeBridge', () => {
+  const uploadToProjectA = '\u628A\u9009\u4E2D\u6570\u636E\u4E0A\u4F20\u5230\u9879\u76EEA';
+  const uploadWithoutTargetSeparator = '\u628A\u9009\u4E2D\u6570\u636E\u4E0A\u4F20\u9879\u76EEA';
+  const projectA = '\u9879\u76EEA';
+
   it('correlates responses by request id', async () => {
     const webView = createMockWebView();
     const bridge = new NativeBridge(webView);
@@ -175,6 +179,105 @@ describe('NativeBridge', () => {
       confirmed: false,
     })).rejects.toMatchObject({
       code: 'invalid_command',
+    });
+  });
+
+  it('routes real Chinese upload input to the upload_data preview in browser preview mode', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await expect(bridge.runSkill({
+      userInput: uploadToProjectA,
+      confirmed: false,
+    })).resolves.toEqual({
+      route: 'skill',
+      skillName: 'upload_data',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: `Review the upload payload before sending it to ${projectA}.`,
+      preview: {
+        title: 'Upload selected data',
+        summary: `Upload 2 row(s) to ${projectA}`,
+        details: [
+          'Source: Sheet1!A1:C3',
+          'Fields: Name, Region',
+        ],
+      },
+      uploadPreview: {
+        projectName: projectA,
+        sheetName: 'Sheet1',
+        address: 'A1:C3',
+        headers: ['Name', 'Region'],
+        rows: [
+          ['Project A', 'CN'],
+          ['Project B', 'US'],
+        ],
+        records: [
+          { Name: 'Project A', Region: 'CN' },
+          { Name: 'Project B', Region: 'US' },
+        ],
+      },
+    });
+  });
+
+  it('returns the chat fallback for English upload text without a target project in browser preview mode', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await expect(bridge.runSkill({
+      userInput: 'upload project data',
+      confirmed: false,
+    })).resolves.toEqual({
+      route: 'chat',
+      requiresConfirmation: false,
+      status: 'completed',
+      message: 'General chat routing is not implemented yet. Use /upload_data ... or a direct Excel command.',
+    });
+  });
+
+  it('returns the chat fallback for Chinese upload text without an explicit target separator in browser preview mode', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await expect(bridge.runSkill({
+      userInput: uploadWithoutTargetSeparator,
+      confirmed: false,
+    })).resolves.toEqual({
+      route: 'chat',
+      requiresConfirmation: false,
+      status: 'completed',
+      message: 'General chat routing is not implemented yet. Use /upload_data ... or a direct Excel command.',
+    });
+  });
+
+  it('rejects malformed confirmed upload previews in browser preview mode', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await expect(bridge.runSkill({
+      userInput: uploadToProjectA,
+      confirmed: true,
+      uploadPreview: {
+        projectName: projectA,
+        sheetName: 'Sheet1',
+        address: 'A1:C3',
+        headers: null as unknown as string[],
+        rows: null as unknown as string[][],
+        records: null as unknown as Array<Record<string, string>>,
+      },
+    })).rejects.toMatchObject({
+      code: 'invalid_command',
+      message: 'upload_data confirmation requires a complete preview payload.',
+    });
+  });
+
+  it('returns the chat fallback for unknown skill input in browser preview mode', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await expect(bridge.runSkill({
+      userInput: '帮我总结一下这个工作簿',
+      confirmed: false,
+    })).resolves.toEqual({
+      route: 'chat',
+      requiresConfirmation: false,
+      status: 'completed',
+      message: 'General chat routing is not implemented yet. Use /upload_data ... or a direct Excel command.',
     });
   });
 
