@@ -20,3 +20,10 @@ test.each(["/upload_dataset", "/upload_datax", "prefix /upload_data"])("routes %
     mode: "chat",
   });
 });
+
+test("routes natural-language upload requests to the upload_data skill", () => {
+  expect(decideRoute("把选中数据上传到项目A")).toEqual({
+    mode: "skill",
+    skillName: "upload_data",
+  });
+});

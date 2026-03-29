@@ -6,8 +6,12 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { SelectionBadge } from "./components/SelectionBadge";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { decideRoute } from "./agent/agentOrchestrator";
+import { uploadData } from "./api/businessApiClient";
 import { classifyAction, createExcelAdapter } from "./excel/excelAdapter";
 import { subscribeToSelectionChanges } from "./excel/selectionContextService";
+import { inferSkillRoute } from "./skills/registry";
+import { createUploadPreview } from "./skills/uploadDataSkill";
+import type { UploadPreview } from "./skills/uploadPayloadBuilder";
 import { createSessionStore } from "./state/sessionStore";
 import { createSettingsStore } from "./state/settingsStore";
 import type { ExcelAction } from "./excel/excelAdapter";
@@ -47,6 +51,28 @@ function formatExecutionError(error: unknown) {
   return "\u6267\u884c\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5";
 }
 
+function formatAssistantResultMessage(result: unknown) {
+  if (typeof result === "string") {
+    return `上传完成：${result}`;
+  }
+
+  return `上传完成：${JSON.stringify(result)}`;
+}
+
+function isUploadSubmitAction(action: ExcelAction): action is ExcelAction & { args: UploadPreview } {
+  return action.type === "skill.upload_data.submit";
+}
+
+function buildConfirmationSummary(action: ExcelAction) {
+  if (isUploadSubmitAction(action)) {
+    const previewRows = action.args.previewRows.map((row) => row.join(" / ")).join("；");
+    const columns = action.args.columns.join(", ");
+    return `确认上传到${action.args.project}，列：${columns}，共 ${action.args.rowCount} 行，预览：${previewRows}`;
+  }
+
+  return `准备执行 ${action.type}`;
+}
+
 export default function App({
   sessionStoreFactory = createSessionStore,
   excelAdapterFactory = createExcelAdapter,
@@ -84,6 +110,27 @@ export default function App({
       sessionStore.replaceMessages(activeSessionId, nextMessages);
       refreshSessions();
     }
+  }
+
+  function appendMessageToSession(sessionId: string, role: ChatMessage["role"], content: string) {
+    const session = sessionStore.getState().sessions.find((item) => item.id === sessionId);
+    const baseMessages = session?.messages.length ? session.messages : role === "assistant" ? initialMessages : [];
+    const nextMessages = [
+      ...baseMessages,
+      {
+        id: crypto.randomUUID(),
+        role,
+        content,
+      },
+    ];
+
+    sessionStore.replaceMessages(sessionId, nextMessages);
+
+    if (sessionStore.getState().activeSessionId === sessionId) {
+      setMessages(nextMessages);
+    }
+
+    refreshSessions();
   }
 
   function updatePendingConfirmation(nextConfirmation: PendingExcelConfirmation | null) {
@@ -135,8 +182,30 @@ export default function App({
     setIsSettingsOpen(false);
   }
 
-  async function executeExcelAction(action: ExcelAction, confirmation: PendingExcelConfirmation | null = null) {
-    await excelAdapter.run(action);
+  function queuePendingConfirmation(action: ExcelAction, sessionId = activeSessionId) {
+    if (!sessionId) {
+      return;
+    }
+
+    updatePendingConfirmation({
+      requestId: nextRequestIdRef.current,
+      sessionId,
+      action,
+      isExecuting: false,
+      error: null,
+    });
+    nextRequestIdRef.current += 1;
+  }
+
+  async function executeAction(action: ExcelAction, confirmation: PendingExcelConfirmation | null = null) {
+    if (isUploadSubmitAction(action)) {
+      const result = await uploadData(settings.apiKey, action.args);
+      if (confirmation) {
+        appendMessageToSession(confirmation.sessionId, "assistant", formatAssistantResultMessage(result));
+      }
+    } else {
+      await excelAdapter.run(action);
+    }
 
     if (confirmation && pendingConfirmationRef.current?.requestId === confirmation.requestId) {
       updatePendingConfirmation(null);
@@ -157,7 +226,7 @@ export default function App({
     updatePendingConfirmation(executing);
 
     try {
-      await executeExcelAction(current.action, current);
+      await executeAction(current.action, current);
     } catch (error) {
       if (pendingConfirmationRef.current?.requestId === current.requestId) {
         updatePendingConfirmation({
@@ -180,28 +249,39 @@ export default function App({
 
   function queueAction(action: ExcelAction) {
     if (classifyAction(action).requiresConfirmation) {
-      const sessionId = activeSessionId;
-      if (!sessionId) {
-        return;
-      }
-
-      updatePendingConfirmation({
-        requestId: nextRequestIdRef.current,
-        sessionId,
-        action,
-        isExecuting: false,
-        error: null,
-      });
-      nextRequestIdRef.current += 1;
+      queuePendingConfirmation(action);
       return;
     }
 
-    void executeExcelAction(action);
+    void executeAction(action);
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     const content = draft.trim();
     if (!content) {
+      return;
+    }
+
+    const sessionId = activeSessionId;
+    if (!sessionId) {
+      return;
+    }
+
+    appendMessageToSession(sessionId, "user", content);
+    setDraft("");
+
+    const skillRoute = inferSkillRoute(content);
+    if (skillRoute?.skillName === "upload_data") {
+      try {
+        const { headers, rows } = await excelAdapter.readSelectionTable();
+        const preview = createUploadPreview(skillRoute.project, headers, rows);
+        queuePendingConfirmation({
+          type: "skill.upload_data.submit",
+          args: preview,
+        }, sessionId);
+      } catch (error) {
+        appendMessageToSession(sessionId, "assistant", formatExecutionError(error));
+      }
       return;
     }
 
@@ -209,16 +289,6 @@ export default function App({
     if (route.mode !== "chat") {
       return;
     }
-
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content,
-    };
-
-    const nextMessages = activeSession?.messages.length ? [...messages, userMessage] : [userMessage];
-    syncMessages(nextMessages);
-    setDraft("");
   }
 
   return (
@@ -249,7 +319,7 @@ export default function App({
           confirmation={
             visibleConfirmation ? (
               <ConfirmationCard
-                summary={`Prepare to run ${visibleConfirmation.action.type}`}
+                summary={buildConfirmationSummary(visibleConfirmation.action)}
                 error={visibleConfirmation.error}
                 isExecuting={visibleConfirmation.isExecuting}
                 onConfirm={() => {

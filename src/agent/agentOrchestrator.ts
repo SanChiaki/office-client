@@ -1,3 +1,5 @@
+import { inferSkillRoute } from "../skills/registry";
+
 export type RouteDecision =
   | {
       mode: "skill";
@@ -8,12 +10,11 @@ export type RouteDecision =
     };
 
 export function decideRoute(input: string): RouteDecision {
-  const trimmed = input.trim();
-
-  if (/^\/upload_data(?:$|\s)/.test(trimmed)) {
+  const skillRoute = inferSkillRoute(input);
+  if (skillRoute) {
     return {
       mode: "skill",
-      skillName: "upload_data",
+      skillName: skillRoute.skillName,
     };
   }
 
