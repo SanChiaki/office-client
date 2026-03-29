@@ -56,6 +56,10 @@ export function normalizeSelection(raw: RawSelection): SelectionContext {
   };
 }
 
+export function shouldUseSummaryMode(selection: { rowCount: number; columnCount: number }) {
+  return selection.rowCount * selection.columnCount > 25;
+}
+
 async function readCurrentSelection(): Promise<SelectionContext | null> {
   const runtime = window as unknown as { Excel?: ExcelRuntime };
   if (!runtime.Excel?.run) {

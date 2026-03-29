@@ -267,11 +267,21 @@ export default function App({
       return;
     }
 
-    appendMessageToSession(sessionId, "user", content);
-    setDraft("");
-
     const skillRoute = inferSkillRoute(content);
     if (skillRoute?.skillName === "upload_data") {
+      if (!settings.apiKey) {
+        appendMessageToSession(sessionId, "assistant", "请先在设置中填写 API Key。");
+        return;
+      }
+
+      if (selection?.address.includes(",")) {
+        appendMessageToSession(sessionId, "assistant", "首版仅支持连续选区，请重新选择单个连续区域。");
+        return;
+      }
+
+      appendMessageToSession(sessionId, "user", content);
+      setDraft("");
+
       try {
         const { headers, rows } = await excelAdapter.readSelectionTable();
         const preview = createUploadPreview(skillRoute.project, headers, rows);
@@ -284,6 +294,9 @@ export default function App({
       }
       return;
     }
+
+    appendMessageToSession(sessionId, "user", content);
+    setDraft("");
 
     const route = decideRoute(content);
     if (route.mode !== "chat") {

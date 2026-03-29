@@ -22,3 +22,7 @@ export function decideRoute(input: string): RouteDecision {
     mode: "chat",
   };
 }
+
+export function shouldSendFullSelection(selection: { rowCount: number; columnCount: number } | null) {
+  return !!selection && selection.rowCount * selection.columnCount <= 25;
+}

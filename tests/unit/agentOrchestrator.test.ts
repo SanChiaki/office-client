@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { decideRoute } from "../../src/agent/agentOrchestrator";
+import { decideRoute, shouldSendFullSelection } from "../../src/agent/agentOrchestrator";
 
 test("routes /upload_data commands to the upload_data skill", () => {
   expect(decideRoute("/upload_data import this workbook")).toEqual({
@@ -26,4 +26,10 @@ test("routes natural-language upload requests to the upload_data skill", () => {
     mode: "skill",
     skillName: "upload_data",
   });
+});
+
+test("sends full selection only for selections up to 25 cells", () => {
+  expect(shouldSendFullSelection({ rowCount: 5, columnCount: 5 })).toBe(true);
+  expect(shouldSendFullSelection({ rowCount: 6, columnCount: 5 })).toBe(false);
+  expect(shouldSendFullSelection(null)).toBe(false);
 });

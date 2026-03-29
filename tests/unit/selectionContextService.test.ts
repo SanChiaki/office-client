@@ -1,5 +1,9 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { normalizeSelection, subscribeToSelectionChanges } from "../../src/excel/selectionContextService";
+import {
+  normalizeSelection,
+  shouldUseSummaryMode,
+  subscribeToSelectionChanges,
+} from "../../src/excel/selectionContextService";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -21,6 +25,11 @@ test("normalizes raw excel selection metadata", () => {
     columnCount: 4,
     hasHeaders: false,
   });
+});
+
+test("uses summary mode for selections larger than 25 cells", () => {
+  expect(shouldUseSummaryMode({ rowCount: 6, columnCount: 5 })).toBe(true);
+  expect(shouldUseSummaryMode({ rowCount: 5, columnCount: 5 })).toBe(false);
 });
 
 test("hydrates the current selection immediately after registration", async () => {

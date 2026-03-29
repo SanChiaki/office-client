@@ -4,6 +4,13 @@ import App from "../../src/App";
 
 beforeEach(() => {
   window.localStorage.clear();
+  window.localStorage.setItem(
+    "oa:settings",
+    JSON.stringify({
+      apiKey: "sk-demo",
+      model: "gpt-4.1-mini",
+    }),
+  );
 });
 
 test("routes slash upload commands into the upload skill flow", async () => {
