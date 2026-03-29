@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, expect, test } from "vitest";
+
 import App from "../../src/App";
 
 beforeEach(() => {
@@ -13,6 +14,9 @@ test("saves settings from the UI and rehydrates them on a fresh mount", () => {
 
   const dialog = screen.getByRole("dialog", { name: "Settings" });
   fireEvent.change(within(dialog).getByLabelText("API Key"), { target: { value: "sk-demo" } });
+  fireEvent.change(within(dialog).getByLabelText("Base URL"), {
+    target: { value: "https://internal.example/api/" },
+  });
   fireEvent.change(within(dialog).getByLabelText("Model"), { target: { value: "gpt-4.1" } });
   fireEvent.click(within(dialog).getByRole("button", { name: "保存设置" }));
 
@@ -23,5 +27,6 @@ test("saves settings from the UI and rehydrates them on a fresh mount", () => {
 
   const rehydratedDialog = screen.getByRole("dialog", { name: "Settings" });
   expect(within(rehydratedDialog).getByLabelText("API Key")).toHaveValue("sk-demo");
+  expect(within(rehydratedDialog).getByLabelText("Base URL")).toHaveValue("https://internal.example/api/");
   expect(within(rehydratedDialog).getByLabelText("Model")).toHaveValue("gpt-4.1");
 });

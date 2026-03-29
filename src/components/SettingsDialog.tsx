@@ -1,4 +1,5 @@
 import { useState } from "react";
+
 import type { SettingsState } from "../state/settingsStore";
 
 export function SettingsDialog({
@@ -11,6 +12,7 @@ export function SettingsDialog({
   onClose(): void;
 }) {
   const [apiKey, setApiKey] = useState(initialValue.apiKey);
+  const [baseUrl, setBaseUrl] = useState(initialValue.baseUrl);
   const [model, setModel] = useState(initialValue.model);
 
   return (
@@ -20,6 +22,10 @@ export function SettingsDialog({
         <input value={apiKey} onChange={(event) => setApiKey(event.target.value)} />
       </label>
       <label>
+        Base URL
+        <input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
+      </label>
+      <label>
         Model
         <input value={model} onChange={(event) => setModel(event.target.value)} />
       </label>
@@ -27,7 +33,7 @@ export function SettingsDialog({
         <button type="button" onClick={onClose}>
           取消
         </button>
-        <button type="button" onClick={() => onSave({ apiKey, model })}>
+        <button type="button" onClick={() => onSave({ apiKey, baseUrl, model })}>
           保存设置
         </button>
       </div>

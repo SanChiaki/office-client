@@ -8,6 +8,7 @@ beforeEach(() => {
     "oa:settings",
     JSON.stringify({
       apiKey: "sk-demo",
+      baseUrl: "https://api.example.com",
       model: "gpt-4.1-mini",
     }),
   );
@@ -89,6 +90,7 @@ test("asks for an API key before starting the upload skill", async () => {
     "oa:settings",
     JSON.stringify({
       apiKey: "",
+      baseUrl: "https://api.example.com",
       model: "gpt-4.1-mini",
     }),
   );

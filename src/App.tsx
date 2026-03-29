@@ -199,7 +199,7 @@ export default function App({
 
   async function executeAction(action: ExcelAction, confirmation: PendingExcelConfirmation | null = null) {
     if (isUploadSubmitAction(action)) {
-      const result = await uploadData(settings.apiKey, action.args);
+      const result = await uploadData(settings.apiKey, settings.baseUrl, action.args);
       if (confirmation) {
         appendMessageToSession(confirmation.sessionId, "assistant", formatAssistantResultMessage(result));
       }
