@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { nativeBridge } from './bridge/nativeBridge';
 import { ConfirmationCard } from './components/ConfirmationCard';
 import type {
+  AgentPlan,
+  AgentRequestEnvelope,
+  AgentResult,
   AppSettings,
   ChatSession,
   ExcelCommand,
@@ -28,9 +31,11 @@ type ThreadMessage = {
 };
 
 type PendingConfirmation = {
-  kind: 'excel' | 'skill';
-  command: ExcelCommand;
+  kind: 'excel' | 'skill' | 'agent';
+  command?: ExcelCommand;
   skillRequest?: SkillRequestEnvelope;
+  agentRequest?: AgentRequestEnvelope;
+  plan?: AgentPlan;
   preview: ExcelCommandPreview;
 };
 
@@ -272,9 +277,18 @@ export function App() {
       return;
     }
 
-    await dispatchSkill({
+    if (matchesDirectSkillInput(trimmedValue)) {
+      await dispatchSkill({
+        userInput: trimmedValue,
+        confirmed: false,
+      }, sessionId);
+      return;
+    }
+
+    await dispatchAgent({
       userInput: trimmedValue,
       confirmed: false,
+      sessionId,
     }, sessionId);
   }
 
@@ -283,7 +297,7 @@ export function App() {
       return;
     }
 
-    if (activePendingConfirmation.kind === 'excel') {
+    if (activePendingConfirmation.kind === 'excel' && activePendingConfirmation.command) {
       await dispatchExcelCommand({
         ...activePendingConfirmation.command,
         confirmed: true,
@@ -291,10 +305,19 @@ export function App() {
       return;
     }
 
-    if (activePendingConfirmation.skillRequest) {
+    if (activePendingConfirmation.kind === 'skill' && activePendingConfirmation.skillRequest) {
       await dispatchSkill({
         ...activePendingConfirmation.skillRequest,
         confirmed: true,
+      }, activeSession.id);
+      return;
+    }
+
+    if (activePendingConfirmation.kind === 'agent' && activePendingConfirmation.agentRequest && activePendingConfirmation.plan) {
+      await dispatchAgent({
+        ...activePendingConfirmation.agentRequest,
+        confirmed: true,
+        plan: activePendingConfirmation.plan,
       }, activeSession.id);
     }
   }
@@ -310,7 +333,9 @@ export function App() {
       role: 'system',
       content: activePendingConfirmation.kind === 'skill'
         ? 'Cancelled the pending upload.'
-        : 'Cancelled the pending Excel change.',
+        : activePendingConfirmation.kind === 'agent'
+          ? 'Cancelled the pending execution plan.'
+          : 'Cancelled the pending Excel change.',
     });
   }
 
@@ -358,10 +383,6 @@ export function App() {
       if (result.requiresConfirmation && result.preview) {
         setSessionPendingConfirmation(sessionId, {
           kind: 'skill',
-          command: {
-            commandType: '',
-            confirmed: false,
-          },
           skillRequest: {
             userInput: request.userInput,
             skillName: result.skillName,
@@ -387,10 +408,65 @@ export function App() {
     }
   }
 
+  async function dispatchAgent(request: AgentRequestEnvelope, sessionId: string) {
+    setCommandPending(sessionId, true);
+
+    try {
+      const result = await nativeBridge.runAgent({
+        ...request,
+        sessionId,
+      });
+
+      if (result.requiresConfirmation && result.planner?.mode === 'plan' && result.planner.plan) {
+        setSessionPendingConfirmation(sessionId, {
+          kind: 'agent',
+          agentRequest: {
+            userInput: request.userInput,
+            confirmed: false,
+            sessionId,
+          },
+          plan: result.planner.plan,
+          preview: createPlanPreview(result),
+        });
+        appendThreadMessage(sessionId, {
+          id: createMessageId(),
+          role: 'assistant',
+          content: result.message,
+        });
+        return;
+      }
+
+      setSessionPendingConfirmation(sessionId, null);
+      appendThreadMessages(sessionId, createAgentResultMessages(result));
+    } catch (error) {
+      appendThreadMessage(sessionId, {
+        id: createMessageId(),
+        role: 'assistant',
+        content: error instanceof Error ? error.message : 'Agent execution failed.',
+      });
+    } finally {
+      setCommandPending(sessionId, false);
+    }
+  }
+
   function appendThreadMessage(sessionId: string, message: ThreadMessage) {
     setSessionThreads((current) => ({
       ...current,
       [sessionId]: [...(current[sessionId] ?? createInitialThreadMessages(findSessionById(sessions, sessionId))), message],
+    }));
+  }
+
+  function appendThreadMessages(sessionId: string, messages: ThreadMessage[]) {
+    if (messages.length === 0) {
+      return;
+    }
+
+    setSessionThreads((current) => ({
+      ...current,
+      [sessionId]: [
+        ...(current[sessionId] ?? createInitialThreadMessages(findSessionById(sessions, sessionId))),
+        ...messages,
+      ],
     }));
   }
 
@@ -672,6 +748,37 @@ function createSkillResultMessage(result: SkillResult): ThreadMessage {
   };
 }
 
+function createAgentResultMessages(result: AgentResult): ThreadMessage[] {
+  const messages: ThreadMessage[] = [
+    {
+      id: createMessageId(),
+      role: 'assistant',
+      content: result.message,
+    },
+  ];
+
+  if (result.journal) {
+    result.journal.steps.forEach((step) => {
+      messages.push({
+        id: createMessageId(),
+        role: 'system',
+        content: `${step.status} · ${step.title}${step.errorMessage ? ` · ${step.errorMessage}` : ''}`.trim(),
+      });
+    });
+  }
+
+  return messages;
+}
+
+function createPlanPreview(result: AgentResult): ExcelCommandPreview {
+  const plan = result.planner?.plan;
+  return {
+    title: 'Execution plan',
+    summary: plan?.summary ?? result.message,
+    details: plan?.steps.map(formatPlanStep) ?? [],
+  };
+}
+
 function createTableFromUploadPreview(preview?: UploadPreview): ExcelTableData | undefined {
   if (!preview) {
     return undefined;
@@ -683,6 +790,32 @@ function createTableFromUploadPreview(preview?: UploadPreview): ExcelTableData |
     headers: preview.headers,
     rows: preview.rows,
   };
+}
+
+function formatPlanStep(step: AgentPlan['steps'][number]) {
+  switch (step.type) {
+    case 'excel.addWorksheet':
+      return `Add worksheet ${String(step.args?.newSheetName ?? '').trim()}`.trim();
+    case 'excel.writeRange':
+      return `Write range ${String(step.args?.targetAddress ?? '').trim()}`.trim();
+    case 'excel.renameWorksheet':
+      return `Rename worksheet ${String(step.args?.sheetName ?? '').trim()} to ${String(step.args?.newSheetName ?? '').trim()}`.trim();
+    case 'excel.deleteWorksheet':
+      return `Delete worksheet ${String(step.args?.sheetName ?? '').trim()}`.trim();
+    case 'skill.upload_data':
+      return 'Upload selected data';
+    default:
+      return step.type;
+  }
+}
+
+function matchesDirectSkillInput(input: string) {
+  const trimmedInput = input.trim();
+  return (
+    trimmedInput.startsWith('/upload_data') ||
+    trimmedInput.includes('\u4E0A\u4F20\u5230') ||
+    /\bupload\b.+\bto\s+.+$/i.test(trimmedInput)
+  );
 }
 
 function parseExcelCommand(input: string): ExcelCommand | null {

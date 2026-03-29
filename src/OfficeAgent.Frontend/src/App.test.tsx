@@ -15,6 +15,7 @@ vi.mock('./bridge/nativeBridge', () => ({
     saveSettings: vi.fn(),
     executeExcelCommand: vi.fn(),
     runSkill: vi.fn(),
+    runAgent: vi.fn(),
   },
 }));
 
@@ -100,6 +101,12 @@ beforeEach(() => {
     },
   });
   mockedBridge.runSkill.mockResolvedValue({
+    route: 'chat',
+    requiresConfirmation: false,
+    status: 'completed',
+    message: 'General chat routing is not implemented yet. Use /upload_data ... or a direct Excel command.',
+  });
+  mockedBridge.runAgent.mockResolvedValue({
     route: 'chat',
     requiresConfirmation: false,
     status: 'completed',
@@ -432,6 +439,124 @@ describe('App shell', () => {
     expect(screen.getByText(/project a \| cn \| 42/i)).toBeInTheDocument();
   });
 
+  it('routes plain natural language through the agent bridge', async () => {
+    const user = userEvent.setup();
+    mockedBridge.runAgent.mockResolvedValueOnce({
+      route: 'chat',
+      requiresConfirmation: false,
+      status: 'completed',
+      message: 'I can help with the current selection.',
+    });
+
+    render(<App />);
+
+    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'Create a summary sheet from the current selection');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+
+    expect(mockedBridge.runAgent).toHaveBeenCalledWith({
+      userInput: 'Create a summary sheet from the current selection',
+      confirmed: false,
+      sessionId: 'browser-preview-session',
+    });
+    expect(mockedBridge.runSkill).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(/i can help with the current selection/i),
+    ).toBeInTheDocument();
+  });
+
+  it('renders a plan preview and confirms the frozen plan through the agent bridge', async () => {
+    const user = userEvent.setup();
+    const frozenPlan = {
+      summary: 'Create a Summary sheet and write the selected rows.',
+      steps: [
+        {
+          type: 'excel.addWorksheet',
+          args: {
+            newSheetName: 'Summary',
+          },
+        },
+        {
+          type: 'excel.writeRange',
+          args: {
+            targetAddress: 'Summary!A1:B3',
+            values: [
+              ['Name', 'Region'],
+              ['Project A', 'CN'],
+              ['Project B', 'US'],
+            ],
+          },
+        },
+      ],
+    };
+
+    mockedBridge.runAgent
+      .mockResolvedValueOnce({
+        route: 'plan',
+        requiresConfirmation: true,
+        status: 'preview',
+        message: 'I prepared a plan. Review it before Excel is changed.',
+        planner: {
+          mode: 'plan',
+          assistantMessage: 'I prepared a plan. Review it before Excel is changed.',
+          plan: frozenPlan,
+        },
+      })
+      .mockResolvedValueOnce({
+        route: 'plan',
+        requiresConfirmation: false,
+        status: 'completed',
+        message: 'Plan executed successfully.',
+        journal: {
+          hasFailures: false,
+          errorMessage: '',
+          steps: [
+            {
+              type: 'excel.addWorksheet',
+              title: 'Add worksheet Summary',
+              status: 'completed',
+              message: 'Worksheet "Summary" created.',
+              errorMessage: '',
+            },
+            {
+              type: 'excel.writeRange',
+              title: 'Write range Summary!A1:B3',
+              status: 'completed',
+              message: 'Wrote 3 row(s) to Summary!A1:B3.',
+              errorMessage: '',
+            },
+          ],
+        },
+      });
+
+    render(<App />);
+
+    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'Create a summary sheet from the current selection');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+
+    expect(
+      await screen.findByText(/create a summary sheet and write the selected rows/i),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+    expect(mockedBridge.runAgent).toHaveBeenNthCalledWith(1, {
+      userInput: 'Create a summary sheet from the current selection',
+      confirmed: false,
+      sessionId: 'browser-preview-session',
+    });
+    expect(mockedBridge.runAgent).toHaveBeenNthCalledWith(2, {
+      userInput: 'Create a summary sheet from the current selection',
+      confirmed: true,
+      sessionId: 'browser-preview-session',
+      plan: frozenPlan,
+    });
+    expect(
+      await screen.findByText(/plan executed successfully/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/completed · add worksheet summary/i)).toBeInTheDocument();
+    expect(screen.getByText(/completed · write range summary!a1:b3/i)).toBeInTheDocument();
+  });
+
   it('queues write commands for confirmation before executing them', async () => {
     const user = userEvent.setup();
     mockedBridge.executeExcelCommand
@@ -565,7 +690,7 @@ describe('App shell', () => {
     ).toBeInTheDocument();
   });
 
-  it('routes upload_data through the skill bridge and confirms with the returned preview payload', async () => {
+  it('routes explicit slash upload_data through the skill bridge and confirms with the returned preview payload', async () => {
     const user = userEvent.setup();
     const uploadPreview = {
       projectName: '项目A',

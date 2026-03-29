@@ -13,6 +13,7 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
         public const string SaveSettings = "bridge.saveSettings";
         public const string ExecuteExcelCommand = "bridge.executeExcelCommand";
         public const string RunSkill = "bridge.runSkill";
+        public const string RunAgent = "bridge.runAgent";
     }
 
     internal sealed class WebMessageRequest

@@ -7,6 +7,9 @@
   ExcelCommand,
   ExcelCommandPreview,
   ExcelCommandResult,
+  AgentPlan,
+  AgentRequestEnvelope,
+  AgentResult,
   SelectionContext,
   SessionState,
   SkillRequestEnvelope,
@@ -26,6 +29,7 @@ const BRIDGE_TYPES = {
   saveSettings: 'bridge.saveSettings',
   executeExcelCommand: 'bridge.executeExcelCommand',
   runSkill: 'bridge.runSkill',
+  runAgent: 'bridge.runAgent',
 } as const;
 
 const BROWSER_PREVIEW_PING: PingPayload = {
@@ -157,6 +161,10 @@ export class NativeBridge {
     return this.invoke<SkillRequestEnvelope, SkillResult>(BRIDGE_TYPES.runSkill, payload);
   }
 
+  runAgent(payload: AgentRequestEnvelope) {
+    return this.invoke<AgentRequestEnvelope, AgentResult>(BRIDGE_TYPES.runAgent, payload);
+  }
+
   onSelectionContextChanged(listener: SelectionContextListener) {
     this.selectionContextListeners.add(listener);
     return () => {
@@ -205,6 +213,14 @@ export class NativeBridge {
       if (type === BRIDGE_TYPES.runSkill) {
         try {
           return Promise.resolve(createBrowserPreviewSkillResult(validateBrowserPreviewSkill(payload as SkillRequestEnvelope)) as TResult);
+        } catch (error) {
+          return Promise.reject(error);
+        }
+      }
+
+      if (type === BRIDGE_TYPES.runAgent) {
+        try {
+          return Promise.resolve(createBrowserPreviewAgentResult(validateBrowserPreviewAgent(payload as AgentRequestEnvelope)) as TResult);
         } catch (error) {
           return Promise.reject(error);
         }
@@ -571,6 +587,112 @@ function createBrowserPreviewSkillResult(payload: SkillRequestEnvelope): SkillRe
     preview,
     uploadPreview,
   };
+}
+
+function validateBrowserPreviewAgent(payload: AgentRequestEnvelope): AgentRequestEnvelope {
+  if (!payload?.userInput?.trim()) {
+    throw new NativeBridgeError({
+      code: 'invalid_command',
+      message: 'Agent execution requires user input.',
+    });
+  }
+
+  if (payload.confirmed && !payload.plan) {
+    throw new NativeBridgeError({
+      code: 'invalid_command',
+      message: 'Agent confirmation requires a frozen plan payload.',
+    });
+  }
+
+  return {
+    ...payload,
+    userInput: payload.userInput.trim(),
+  };
+}
+
+function createBrowserPreviewAgentResult(payload: AgentRequestEnvelope): AgentResult {
+  if (payload.confirmed && payload.plan) {
+    return {
+      route: 'plan',
+      requiresConfirmation: false,
+      status: 'completed',
+      message: 'Plan executed successfully.',
+      journal: {
+        hasFailures: false,
+        errorMessage: '',
+        steps: payload.plan.steps.map((step) => ({
+          type: step.type,
+          title: formatBrowserPreviewPlanStep(step),
+          status: 'completed',
+          message: `Completed ${formatBrowserPreviewPlanStep(step)}.`,
+          errorMessage: '',
+        })),
+      },
+    };
+  }
+
+  if (/\bsummary\b|\bworksheet\b|\bsheet\b/i.test(payload.userInput)) {
+    return {
+      route: 'plan',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: 'I prepared a plan. Review it before Excel is changed.',
+      planner: {
+        mode: 'plan',
+        assistantMessage: 'I prepared a plan. Review it before Excel is changed.',
+        plan: createBrowserPreviewPlan(),
+      },
+    };
+  }
+
+  return {
+    route: 'chat',
+    requiresConfirmation: false,
+    status: 'completed',
+    message: 'General chat routing is not implemented yet. Use /upload_data ... or a direct Excel command.',
+  };
+}
+
+function createBrowserPreviewPlan(): AgentPlan {
+  return {
+    summary: 'Create a Summary sheet and write the selected rows.',
+    steps: [
+      {
+        type: 'excel.addWorksheet',
+        args: {
+          newSheetName: 'Summary',
+        },
+      },
+      {
+        type: 'excel.writeRange',
+        args: {
+          targetAddress: 'Summary!A1:B3',
+          values: [
+            ['Name', 'Region'],
+            ['Project A', 'CN'],
+            ['Project B', 'US'],
+          ],
+        },
+      },
+    ],
+  };
+}
+
+function formatBrowserPreviewPlanStep(step: { type: string; args?: Record<string, unknown> }) {
+  switch (step.type) {
+    case 'excel.addWorksheet':
+      return `Add worksheet ${String(step.args?.newSheetName ?? '').trim()}`.trim();
+    case 'excel.writeRange':
+      return `Write range ${String(step.args?.targetAddress ?? '').trim()}`.trim();
+    case 'excel.renameWorksheet':
+      return `Rename worksheet ${String(step.args?.sheetName ?? '').trim()} to ${String(step.args?.newSheetName ?? '').trim()}`.trim();
+    case 'excel.deleteWorksheet':
+      return `Delete worksheet ${String(step.args?.sheetName ?? '').trim()}`.trim();
+    case 'skill.upload_data':
+      return 'Upload selected data';
+    default:
+      return step.type;
+  }
 }
 
 function buildBrowserPreviewUpload(userInput: string): UploadPreview {

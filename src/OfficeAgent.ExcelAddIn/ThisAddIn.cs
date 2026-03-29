@@ -37,8 +37,14 @@ namespace OfficeAgent.ExcelAddIn
                 new DpapiSecretProtector());
             ExcelContextService = new ExcelSelectionContextService(Application);
             ExcelCommandExecutor = new ExcelInteropAdapter(Application, ExcelContextService);
-            AgentOrchestrator = new AgentOrchestrator(new SkillRegistry(
-                new UploadDataSkill(ExcelCommandExecutor, new BusinessApiClient(SettingsStore))));
+            var skillRegistry = new SkillRegistry(
+                new UploadDataSkill(ExcelCommandExecutor, new BusinessApiClient(SettingsStore)));
+            AgentOrchestrator = new AgentOrchestrator(
+                skillRegistry,
+                ExcelContextService,
+                ExcelCommandExecutor,
+                new LlmPlannerClient(SettingsStore),
+                new PlanExecutor(ExcelCommandExecutor, skillRegistry));
             TaskPaneController = new TaskPaneController(this, SessionStore, SettingsStore, ExcelContextService, ExcelCommandExecutor, AgentOrchestrator);
             Application.SheetSelectionChange += Application_SheetSelectionChange;
             OfficeAgentLog.Info("host", "startup.completed", "OfficeAgent Excel add-in started.");

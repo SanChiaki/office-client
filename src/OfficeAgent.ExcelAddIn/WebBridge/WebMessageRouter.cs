@@ -32,6 +32,7 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
             BridgeMessageTypes.SaveSettings,
             BridgeMessageTypes.ExecuteExcelCommand,
             BridgeMessageTypes.RunSkill,
+            BridgeMessageTypes.RunAgent,
         };
         private readonly FileSessionStore sessionStore;
         private readonly FileSettingsStore settingsStore;
@@ -156,6 +157,8 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                         return ExecuteExcelCommand(request);
                     case BridgeMessageTypes.RunSkill:
                         return RunSkill(request);
+                    case BridgeMessageTypes.RunAgent:
+                        return RunAgent(request);
                     default:
                         return Error(
                             request.Type,
@@ -189,6 +192,7 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
             try
             {
                 var envelope = request.Payload.ToObject<AgentCommandEnvelope>() ?? new AgentCommandEnvelope();
+                envelope.DispatchMode = AgentDispatchModes.Skill;
                 return Success(request.Type, request.RequestId, agentOrchestrator.Execute(envelope));
             }
             catch (JsonException)
@@ -213,6 +217,49 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                     request.Type,
                     request.RequestId,
                     code: "skill_failed",
+                    message: error.Message);
+            }
+        }
+
+        private WebMessageResponse RunAgent(WebMessageRequest request)
+        {
+            if (request.Payload == null || request.Payload.Type != JTokenType.Object || !request.Payload.HasValues)
+            {
+                return Error(
+                    request.Type,
+                    request.RequestId,
+                    code: "malformed_payload",
+                    message: "bridge.runAgent requires an agent payload.");
+            }
+
+            try
+            {
+                var envelope = request.Payload.ToObject<AgentCommandEnvelope>() ?? new AgentCommandEnvelope();
+                envelope.DispatchMode = AgentDispatchModes.Agent;
+                return Success(request.Type, request.RequestId, agentOrchestrator.Execute(envelope));
+            }
+            catch (JsonException)
+            {
+                return Error(
+                    request.Type,
+                    request.RequestId,
+                    code: "malformed_payload",
+                    message: "bridge.runAgent requires a valid agent payload.");
+            }
+            catch (ArgumentException error)
+            {
+                return Error(
+                    request.Type,
+                    request.RequestId,
+                    code: "invalid_command",
+                    message: error.Message);
+            }
+            catch (InvalidOperationException error)
+            {
+                return Error(
+                    request.Type,
+                    request.RequestId,
+                    code: "agent_failed",
                     message: error.Message);
             }
         }

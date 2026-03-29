@@ -281,6 +281,46 @@ describe('NativeBridge', () => {
     });
   });
 
+  it('returns a plan preview in browser preview mode for natural-language planner input', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await expect(bridge.runAgent({
+      userInput: 'Create a summary sheet from the current selection',
+      confirmed: false,
+    })).resolves.toEqual({
+      route: 'plan',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: 'I prepared a plan. Review it before Excel is changed.',
+      planner: {
+        mode: 'plan',
+        assistantMessage: 'I prepared a plan. Review it before Excel is changed.',
+        plan: {
+          summary: 'Create a Summary sheet and write the selected rows.',
+          steps: [
+            {
+              type: 'excel.addWorksheet',
+              args: {
+                newSheetName: 'Summary',
+              },
+            },
+            {
+              type: 'excel.writeRange',
+              args: {
+                targetAddress: 'Summary!A1:B3',
+                values: [
+                  ['Name', 'Region'],
+                  ['Project A', 'CN'],
+                  ['Project B', 'US'],
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it('sends getSettings requests through the structured bridge contract', async () => {
     const webView = createMockWebView();
     const bridge = new NativeBridge(webView);
@@ -337,6 +377,54 @@ describe('NativeBridge', () => {
       requiresConfirmation: false,
       status: 'completed',
       message: 'Read selection from Sheet1 A1:C4.',
+    });
+  });
+
+  it('sends runAgent requests through the structured bridge contract', async () => {
+    const webView = createMockWebView();
+    const bridge = new NativeBridge(webView);
+
+    const pending = bridge.runAgent({
+      userInput: 'Create a summary sheet from the current selection',
+      confirmed: false,
+    });
+    const [request] = webView.postedMessages as Array<{ type: string; requestId: string }>;
+
+    expect(request.type).toBe('bridge.runAgent');
+
+    webView.dispatch({
+      type: 'bridge.runAgent',
+      requestId: request.requestId,
+      ok: true,
+      payload: {
+        route: 'plan',
+        requiresConfirmation: true,
+        status: 'preview',
+        message: 'I prepared a plan. Review it before Excel is changed.',
+        planner: {
+          mode: 'plan',
+          assistantMessage: 'I prepared a plan. Review it before Excel is changed.',
+          plan: {
+            summary: 'Create a Summary sheet and write the selected rows.',
+            steps: [],
+          },
+        },
+      },
+    });
+
+    await expect(pending).resolves.toEqual({
+      route: 'plan',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: 'I prepared a plan. Review it before Excel is changed.',
+      planner: {
+        mode: 'plan',
+        assistantMessage: 'I prepared a plan. Review it before Excel is changed.',
+        plan: {
+          summary: 'Create a Summary sheet and write the selected rows.',
+          steps: [],
+        },
+      },
     });
   });
 

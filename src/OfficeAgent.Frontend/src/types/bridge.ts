@@ -106,6 +106,53 @@ export interface SkillResult {
   uploadPreview?: UploadPreview;
 }
 
+export interface AgentPlanStep {
+  type: string;
+  args?: Record<string, unknown>;
+}
+
+export interface AgentPlan {
+  summary: string;
+  steps: AgentPlanStep[];
+}
+
+export interface PlannerResponse {
+  mode: string;
+  assistantMessage: string;
+  step?: AgentPlanStep;
+  plan?: AgentPlan;
+}
+
+export interface PlanExecutionJournalStep {
+  type: string;
+  title: string;
+  status: string;
+  message?: string;
+  errorMessage?: string;
+}
+
+export interface PlanExecutionJournal {
+  hasFailures: boolean;
+  errorMessage: string;
+  steps: PlanExecutionJournalStep[];
+}
+
+export interface AgentRequestEnvelope {
+  userInput: string;
+  confirmed: boolean;
+  sessionId?: string;
+  plan?: AgentPlan;
+}
+
+export interface AgentResult {
+  route: string;
+  requiresConfirmation: boolean;
+  status: string;
+  message: string;
+  planner?: PlannerResponse;
+  journal?: PlanExecutionJournal;
+}
+
 export interface BridgeResponseEnvelope<TPayload = unknown> {
   type: string;
   requestId: string;

@@ -273,6 +273,79 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
+        public void RunAgentRoutesNaturalLanguageRequestsThroughThePlannerDispatch()
+        {
+            var sessionStore = new FileSessionStore(Path.Combine(tempDirectory, "sessions"));
+            var settingsStore = new FileSettingsStore(
+                Path.Combine(tempDirectory, "settings.json"),
+                new DpapiSecretProtector());
+            var orchestrator = new FakeAgentOrchestrator
+            {
+                Result = new AgentCommandResult
+                {
+                    Route = AgentRouteTypes.Plan,
+                    RequiresConfirmation = true,
+                    Status = "preview",
+                    Message = "I prepared a plan. Review it before Excel is changed.",
+                    Planner = new PlannerResponse
+                    {
+                        Mode = PlannerResponseModes.Plan,
+                        AssistantMessage = "I prepared a plan. Review it before Excel is changed.",
+                        Plan = new AgentPlan
+                        {
+                            Summary = "Create a Summary sheet.",
+                            Steps = new[]
+                            {
+                                new AgentPlanStep
+                                {
+                                    Type = ExcelCommandTypes.AddWorksheet,
+                                },
+                            },
+                        },
+                    },
+                },
+            };
+
+            var router = CreateRouter(
+                sessionStore,
+                settingsStore,
+                new FakeExcelContextService(SelectionContext.Empty("No selection available.")),
+                new FakeExcelCommandExecutor(),
+                orchestrator);
+            var responseJson = InvokeRoute(
+                router,
+                "{\"type\":\"bridge.runAgent\",\"requestId\":\"req-1\",\"payload\":{\"userInput\":\"Create a summary sheet\",\"confirmed\":false}}");
+
+            Assert.Contains("\"ok\":true", responseJson);
+            Assert.Contains("\"route\":\"plan\"", responseJson);
+            Assert.Contains("\"mode\":\"plan\"", responseJson);
+            Assert.Equal(AgentDispatchModes.Agent, orchestrator.LastEnvelope.DispatchMode);
+            Assert.Equal("Create a summary sheet", orchestrator.LastEnvelope.UserInput);
+        }
+
+        [Fact]
+        public void RunAgentRejectsMissingPayload()
+        {
+            var sessionStore = new FileSessionStore(Path.Combine(tempDirectory, "sessions"));
+            var settingsStore = new FileSettingsStore(
+                Path.Combine(tempDirectory, "settings.json"),
+                new DpapiSecretProtector());
+
+            var router = CreateRouter(
+                sessionStore,
+                settingsStore,
+                new FakeExcelContextService(SelectionContext.Empty("No selection available.")),
+                new FakeExcelCommandExecutor(),
+                new FakeAgentOrchestrator());
+            var responseJson = InvokeRoute(
+                router,
+                "{\"type\":\"bridge.runAgent\",\"requestId\":\"req-1\"}");
+
+            Assert.Contains("\"ok\":false", responseJson);
+            Assert.Contains("\"code\":\"malformed_payload\"", responseJson);
+        }
+
+        [Fact]
         public void ExecuteExcelCommandReturnsInternalErrorForUnexpectedExecutorFailures()
         {
             var sessionStore = new FileSessionStore(Path.Combine(tempDirectory, "sessions"));
