@@ -1,4 +1,34 @@
+import { useEffect, useState } from 'react';
+import { nativeBridge } from './bridge/nativeBridge';
+
 export function App() {
+  const [bridgeStatus, setBridgeStatus] = useState('Connecting to native host...');
+
+  useEffect(() => {
+    let isActive = true;
+
+    nativeBridge
+      .ping()
+      .then((result) => {
+        if (!isActive) {
+          return;
+        }
+
+        setBridgeStatus(`Connected to ${result.host} (${result.version})`);
+      })
+      .catch((error: Error) => {
+        if (!isActive) {
+          return;
+        }
+
+        setBridgeStatus(`Native bridge unavailable: ${error.message}`);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Session sidebar placeholder">
@@ -19,7 +49,8 @@ export function App() {
         </header>
 
         <section className="selection-badge" aria-label="Selection badge placeholder" role="status">
-          No document selection connected
+          <div className="selection-badge__label">Bridge status</div>
+          <div>{bridgeStatus}</div>
         </section>
 
         <section className="thread" aria-label="Message thread">

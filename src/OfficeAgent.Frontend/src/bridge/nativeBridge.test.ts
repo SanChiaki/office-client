@@ -1,0 +1,78 @@
+import { describe, expect, it } from 'vitest';
+import { NativeBridge } from './nativeBridge';
+
+type WebMessageEventHandler = (event: { data: unknown }) => void;
+
+interface MockWebView {
+  postedMessages: unknown[];
+  addEventListener: (type: 'message', listener: WebMessageEventHandler) => void;
+  removeEventListener: (type: 'message', listener: WebMessageEventHandler) => void;
+  postMessage: (message: unknown) => void;
+  dispatch: (message: unknown) => void;
+}
+
+function createMockWebView(): MockWebView {
+  const listeners = new Set<WebMessageEventHandler>();
+  const postedMessages: unknown[] = [];
+
+  return {
+    postedMessages,
+    addEventListener(_type, listener) {
+      listeners.add(listener);
+    },
+    removeEventListener(_type, listener) {
+      listeners.delete(listener);
+    },
+    postMessage(message) {
+      postedMessages.push(message);
+    },
+    dispatch(message) {
+      listeners.forEach((listener) => listener({ data: message }));
+    },
+  };
+}
+
+describe('NativeBridge', () => {
+  it('correlates responses by request id', async () => {
+    const webView = createMockWebView();
+    const bridge = new NativeBridge(webView);
+
+    const pending = bridge.ping();
+    const [request] = webView.postedMessages as Array<{ requestId: string }>;
+    let settled = false;
+    pending.then(() => {
+      settled = true;
+    });
+
+    webView.dispatch({
+      type: 'bridge.ping',
+      requestId: 'ignored-request',
+      ok: true,
+      payload: { host: 'ignored-host', version: '0.0.0' },
+    });
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    webView.dispatch({
+      type: 'bridge.ping',
+      requestId: request.requestId,
+      ok: true,
+      payload: { host: 'native-host', version: '1.0.0' },
+    });
+
+    await expect(pending).resolves.toEqual({
+      host: 'native-host',
+      version: '1.0.0',
+    });
+  });
+
+  it('falls back to browser preview mode when WebView2 is unavailable', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await expect(bridge.ping()).resolves.toEqual({
+      host: 'browser-preview',
+      version: 'dev',
+    });
+  });
+});

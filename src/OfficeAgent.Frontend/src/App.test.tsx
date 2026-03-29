@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import App from './App';
 
 describe('App shell', () => {
-  it('renders the expected task pane regions', () => {
+  it('renders the expected task pane regions', async () => {
     render(<App />);
 
     expect(
@@ -24,6 +24,9 @@ describe('App shell', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /settings/i }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/connected to browser-preview \(dev\)/i),
     ).toBeInTheDocument();
   });
 });

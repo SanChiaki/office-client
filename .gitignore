@@ -1,2 +1,9 @@
 .superpowers/
 .worktrees/
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/*.tsbuildinfo
+*.user
+*.suo
