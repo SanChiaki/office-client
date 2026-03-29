@@ -48,6 +48,38 @@ export interface SelectionContext {
   warningMessage?: string | null;
 }
 
+export interface ExcelCommand {
+  commandType: string;
+  sheetName?: string;
+  targetAddress?: string;
+  newSheetName?: string;
+  values?: string[][];
+  confirmed: boolean;
+}
+
+export interface ExcelCommandPreview {
+  title: string;
+  summary: string;
+  details: string[];
+}
+
+export interface ExcelTableData {
+  sheetName: string;
+  address: string;
+  headers: string[];
+  rows: string[][];
+}
+
+export interface ExcelCommandResult {
+  commandType: string;
+  requiresConfirmation: boolean;
+  status: string;
+  message: string;
+  preview?: ExcelCommandPreview;
+  table?: ExcelTableData;
+  selectionContext?: SelectionContext;
+}
+
 export interface BridgeResponseEnvelope<TPayload = unknown> {
   type: string;
   requestId: string;

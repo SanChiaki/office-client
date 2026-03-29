@@ -13,6 +13,7 @@ vi.mock('./bridge/nativeBridge', () => ({
     onSelectionContextChanged: vi.fn(),
     getSettings: vi.fn(),
     saveSettings: vi.fn(),
+    executeExcelCommand: vi.fn(),
   },
 }));
 
@@ -82,6 +83,21 @@ beforeEach(() => {
     };
   });
   mockedBridge.saveSettings.mockImplementation(async (settings) => settings);
+  mockedBridge.executeExcelCommand.mockResolvedValue({
+    commandType: 'excel.readSelectionTable',
+    requiresConfirmation: false,
+    status: 'completed',
+    message: 'Read selection from Sheet1 A1:C4.',
+    table: {
+      sheetName: 'Sheet1',
+      address: 'A1:C4',
+      headers: ['Name', 'Region', 'Amount'],
+      rows: [
+        ['Project A', 'CN', '42'],
+        ['Project B', 'US', '36'],
+      ],
+    },
+  });
 });
 
 afterEach(() => {
@@ -386,6 +402,115 @@ describe('App shell', () => {
 
     expect(
       await screen.findByText(/no selection available/i),
+    ).toBeInTheDocument();
+  });
+
+  it('submits read-selection commands without requiring confirmation', async () => {
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'read selection');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+
+    expect(mockedBridge.executeExcelCommand).toHaveBeenCalledWith({
+      commandType: 'excel.readSelectionTable',
+      confirmed: false,
+    });
+    expect(screen.queryByText(/confirm excel action/i)).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/read selection from sheet1 a1:c4/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/name \| region \| amount/i)).toBeInTheDocument();
+    expect(screen.getByText(/project a \| cn \| 42/i)).toBeInTheDocument();
+  });
+
+  it('queues write commands for confirmation before executing them', async () => {
+    const user = userEvent.setup();
+    mockedBridge.executeExcelCommand
+      .mockResolvedValueOnce({
+        commandType: 'excel.addWorksheet',
+        requiresConfirmation: true,
+        status: 'preview',
+        message: 'Confirm worksheet creation before Excel is modified.',
+        preview: {
+          title: 'Add worksheet',
+          summary: 'Add worksheet "Summary"',
+          details: ['Workbook: Quarterly Report.xlsx'],
+        },
+      })
+      .mockResolvedValueOnce({
+        commandType: 'excel.addWorksheet',
+        requiresConfirmation: false,
+        status: 'completed',
+        message: 'Worksheet "Summary" created.',
+      });
+
+    render(<App />);
+
+    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'add sheet Summary');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+
+    expect(
+      await screen.findByText(/confirm excel action/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/add worksheet "summary"/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /confirm/i }));
+
+    expect(mockedBridge.executeExcelCommand).toHaveBeenNthCalledWith(1, {
+      commandType: 'excel.addWorksheet',
+      newSheetName: 'Summary',
+      confirmed: false,
+    });
+    expect(mockedBridge.executeExcelCommand).toHaveBeenNthCalledWith(2, {
+      commandType: 'excel.addWorksheet',
+      newSheetName: 'Summary',
+      confirmed: true,
+    });
+    expect(
+      await screen.findByText(/worksheet "summary" created/i),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps command results in the session that launched them when the user switches threads mid-flight', async () => {
+    const user = userEvent.setup();
+    const pendingCommand = createDeferred<{
+      commandType: string;
+      requiresConfirmation: boolean;
+      status: string;
+      message: string;
+    }>();
+    mockedBridge.executeExcelCommand.mockReturnValueOnce(pendingCommand.promise);
+
+    render(<App />);
+
+    const sidebar = screen.getByRole('complementary', { name: /session sidebar placeholder/i });
+    await screen.findByRole('heading', { name: /browser preview/i });
+
+    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'read selection');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+    await user.click(within(sidebar).getByRole('button', { name: /review notes/i }));
+
+    expect(
+      screen.getByRole('heading', { name: /review notes/i }),
+    ).toBeInTheDocument();
+
+    pendingCommand.resolve({
+      commandType: 'excel.readSelectionTable',
+      requiresConfirmation: false,
+      status: 'completed',
+      message: 'Read selection from Sheet1 A1:C4.',
+    });
+
+    expect(
+      screen.queryByText(/read selection from sheet1 a1:c4/i),
+    ).not.toBeInTheDocument();
+
+    await user.click(within(sidebar).getByRole('button', { name: /browser preview/i }));
+
+    expect(
+      await screen.findByText(/read selection from sheet1 a1:c4/i),
     ).toBeInTheDocument();
   });
 });

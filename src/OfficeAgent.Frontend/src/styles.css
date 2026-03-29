@@ -180,8 +180,65 @@ body {
   border: 1px solid rgba(15, 23, 42, 0.08);
 }
 
+.message--user {
+  justify-self: end;
+  background: #dbeafe;
+  border-color: rgba(37, 99, 235, 0.18);
+}
+
+.message--system {
+  background: #fff7ed;
+  border-color: rgba(234, 88, 12, 0.18);
+}
+
 .message p {
   margin: 0;
+}
+
+.message-table {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 0.9rem;
+}
+
+.confirmation-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid rgba(234, 88, 12, 0.18);
+  border-radius: 18px;
+  background: #fff7ed;
+}
+
+.confirmation-card__eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9a3412;
+}
+
+.confirmation-card__title,
+.confirmation-card__summary {
+  margin: 0;
+}
+
+.confirmation-card__details {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: #7c2d12;
+}
+
+.confirmation-card__actions {
+  display: flex;
+  justify-content: end;
+  gap: 12px;
 }
 
 .composer {
@@ -204,6 +261,15 @@ body {
   justify-self: end;
   background: #2563eb;
   color: #fff;
+}
+
+.icon-button:disabled,
+.ghost-button:disabled,
+.send-button:disabled,
+.composer textarea:disabled,
+.settings-field input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .settings-backdrop {

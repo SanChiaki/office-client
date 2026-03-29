@@ -1,11 +1,32 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { nativeBridge } from './bridge/nativeBridge';
-import type { AppSettings, ChatSession, SelectionContext } from './types/bridge';
+import { ConfirmationCard } from './components/ConfirmationCard';
+import type {
+  AppSettings,
+  ChatSession,
+  ExcelCommand,
+  ExcelCommandPreview,
+  ExcelCommandResult,
+  ExcelTableData,
+  SelectionContext,
+} from './types/bridge';
 
 const DEFAULT_SETTINGS: AppSettings = {
   apiKey: '',
   baseUrl: 'https://api.example.com',
   model: 'gpt-5-mini',
+};
+
+type ThreadMessage = {
+  id: string;
+  role: 'assistant' | 'user' | 'system';
+  content: string;
+  table?: ExcelTableData;
+};
+
+type PendingConfirmation = {
+  command: ExcelCommand;
+  preview: ExcelCommandPreview;
 };
 
 export function App() {
@@ -20,6 +41,10 @@ export function App() {
   const [settingsSaveError, setSettingsSaveError] = useState('');
   const [isSettingsLoading, setIsSettingsLoading] = useState(true);
   const [isSettingsSaving, setIsSettingsSaving] = useState(false);
+  const [composerValue, setComposerValue] = useState('');
+  const [sessionThreads, setSessionThreads] = useState<Record<string, ThreadMessage[]>>({});
+  const [pendingConfirmations, setPendingConfirmations] = useState<Record<string, PendingConfirmation>>({});
+  const [pendingCommandSessions, setPendingCommandSessions] = useState<Record<string, boolean>>({});
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
   const settingsDialogRef = useRef<HTMLElement | null>(null);
   const apiKeyInputRef = useRef<HTMLInputElement | null>(null);
@@ -55,6 +80,7 @@ export function App() {
         }
 
         setSessions(result.sessions);
+        setSessionThreads((current) => hydrateSessionThreads(current, result.sessions));
         setActiveSessionId(result.activeSessionId);
       })
       .catch(() => {
@@ -127,6 +153,11 @@ export function App() {
   }, []);
 
   const activeSession = sessions.find((session) => session.id === activeSessionId) ?? sessions[0];
+  const activeThreadMessages = activeSession
+    ? sessionThreads[activeSession.id] ?? createInitialThreadMessages(activeSession)
+    : createInitialThreadMessages();
+  const activePendingConfirmation = activeSession ? pendingConfirmations[activeSession.id] ?? null : null;
+  const isCommandPending = activeSession ? pendingCommandSessions[activeSession.id] === true : false;
 
   useEffect(() => {
     if (isSettingsOpen) {
@@ -215,6 +246,135 @@ export function App() {
     }
   }
 
+  async function handleComposerSend() {
+    const trimmedValue = composerValue.trim();
+    const sessionId = activeSession?.id ?? activeSessionId;
+    if (!trimmedValue || !sessionId || isCommandPending) {
+      return;
+    }
+
+    appendThreadMessage(sessionId, {
+      id: createMessageId(),
+      role: 'user',
+      content: trimmedValue,
+    });
+    setComposerValue('');
+
+    const command = parseExcelCommand(trimmedValue);
+    if (!command) {
+      appendThreadMessage(sessionId, {
+        id: createMessageId(),
+        role: 'assistant',
+        content: 'Direct Excel commands currently support: read selection, add sheet <name>, rename sheet <from> to <to>, delete sheet <name>, and write range <address> = row1 | row2.',
+      });
+      return;
+    }
+
+    await dispatchExcelCommand(command, sessionId);
+  }
+
+  async function handlePendingConfirmationConfirm() {
+    if (!activePendingConfirmation || !activeSession?.id) {
+      return;
+    }
+
+    await dispatchExcelCommand({
+      ...activePendingConfirmation.command,
+      confirmed: true,
+    }, activeSession.id);
+  }
+
+  function handlePendingConfirmationCancel() {
+    if (!activeSession?.id) {
+      return;
+    }
+
+    setSessionPendingConfirmation(activeSession.id, null);
+    appendThreadMessage(activeSession.id, {
+      id: createMessageId(),
+      role: 'system',
+      content: 'Cancelled the pending Excel change.',
+    });
+  }
+
+  async function dispatchExcelCommand(command: ExcelCommand, sessionId: string) {
+    setCommandPending(sessionId, true);
+
+    try {
+      const result = await nativeBridge.executeExcelCommand(command);
+      if (result.selectionContext) {
+        setSelectionContext(result.selectionContext);
+      }
+
+      if (result.requiresConfirmation && result.preview) {
+        setSessionPendingConfirmation(sessionId, {
+          command,
+          preview: result.preview,
+        });
+        appendThreadMessage(sessionId, {
+          id: createMessageId(),
+          role: 'assistant',
+          content: result.message,
+        });
+        return;
+      }
+
+      setSessionPendingConfirmation(sessionId, null);
+      appendThreadMessage(sessionId, createResultMessage(result));
+    } catch (error) {
+      appendThreadMessage(sessionId, {
+        id: createMessageId(),
+        role: 'assistant',
+        content: error instanceof Error ? error.message : 'Excel command failed.',
+      });
+    } finally {
+      setCommandPending(sessionId, false);
+    }
+  }
+
+  function appendThreadMessage(sessionId: string, message: ThreadMessage) {
+    setSessionThreads((current) => ({
+      ...current,
+      [sessionId]: [...(current[sessionId] ?? createInitialThreadMessages(findSessionById(sessions, sessionId))), message],
+    }));
+  }
+
+  function setSessionPendingConfirmation(sessionId: string, value: PendingConfirmation | null) {
+    setPendingConfirmations((current) => {
+      if (value == null) {
+        if (!(sessionId in current)) {
+          return current;
+        }
+
+        const { [sessionId]: _ignored, ...rest } = current;
+        return rest;
+      }
+
+      return {
+        ...current,
+        [sessionId]: value,
+      };
+    });
+  }
+
+  function setCommandPending(sessionId: string, isPending: boolean) {
+    setPendingCommandSessions((current) => {
+      if (!isPending) {
+        if (!(sessionId in current)) {
+          return current;
+        }
+
+        const { [sessionId]: _ignored, ...rest } = current;
+        return rest;
+      }
+
+      return {
+        ...current,
+        [sessionId]: true,
+      };
+    });
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Session sidebar placeholder">
@@ -287,18 +447,40 @@ export function App() {
         </section>
 
         <section className="thread" aria-label="Message thread">
-          <article className="message message--assistant">
-            <p>Welcome to Office Agent. This shell is ready for the chat experience.</p>
-          </article>
+          {activeThreadMessages.map((message) => (
+            <article key={message.id} className={`message message--${message.role}`}>
+              <p>{message.content}</p>
+              {message.table ? (
+                <div className="message-table">
+                  <div>{message.table.headers.join(' | ')}</div>
+                  {message.table.rows.map((row, index) => (
+                    <div key={`${message.id}-row-${index}`}>{row.join(' | ')}</div>
+                  ))}
+                </div>
+              ) : null}
+            </article>
+          ))}
         </section>
+
+        {activePendingConfirmation ? (
+          <ConfirmationCard
+            preview={activePendingConfirmation.preview}
+            isBusy={isCommandPending}
+            onConfirm={handlePendingConfirmationConfirm}
+            onCancel={handlePendingConfirmationCancel}
+          />
+        ) : null}
 
         <footer className="composer" aria-label="Message composer">
           <textarea
             aria-label="Message composer"
             placeholder="Type a message..."
             rows={3}
+            value={composerValue}
+            disabled={isCommandPending}
+            onChange={(event) => setComposerValue(event.target.value)}
           />
-          <button type="button" className="send-button">
+          <button type="button" className="send-button" disabled={isCommandPending} onClick={handleComposerSend}>
             Send
           </button>
         </footer>
@@ -379,6 +561,116 @@ export function App() {
       ) : null}
     </div>
   );
+}
+
+function createInitialThreadMessages(session?: ChatSession): ThreadMessage[] {
+  const persistedMessages = session?.messages ?? [];
+  if (persistedMessages.length > 0) {
+    return persistedMessages.map((message) => ({
+      id: message.id,
+      role: message.role === 'user' ? 'user' : 'assistant',
+      content: message.content,
+    }));
+  }
+
+  return [
+    {
+      id: 'welcome-message',
+      role: 'assistant',
+      content: 'Welcome to Office Agent. Direct Excel commands are available while the full agent routing is still being wired.',
+    },
+  ];
+}
+
+function hydrateSessionThreads(
+  currentThreads: Record<string, ThreadMessage[]>,
+  sessions: ChatSession[],
+): Record<string, ThreadMessage[]> {
+  const nextThreads: Record<string, ThreadMessage[]> = {};
+
+  sessions.forEach((session) => {
+    nextThreads[session.id] = currentThreads[session.id] ?? createInitialThreadMessages(session);
+  });
+
+  return nextThreads;
+}
+
+function findSessionById(sessions: ChatSession[], sessionId: string): ChatSession | undefined {
+  return sessions.find((session) => session.id === sessionId);
+}
+
+function createResultMessage(result: ExcelCommandResult): ThreadMessage {
+  return {
+    id: createMessageId(),
+    role: 'assistant',
+    content: result.message,
+    table: result.table,
+  };
+}
+
+function parseExcelCommand(input: string): ExcelCommand | null {
+  const trimmed = input.trim();
+  if (/^\/?(read[_ ]selection)$/i.test(trimmed)) {
+    return {
+      commandType: 'excel.readSelectionTable',
+      confirmed: false,
+    };
+  }
+
+  const addSheetMatch = trimmed.match(/^\/?(?:add[_ ]sheet)\s+(.+)$/i);
+  if (addSheetMatch) {
+    return {
+      commandType: 'excel.addWorksheet',
+      newSheetName: addSheetMatch[1].trim(),
+      confirmed: false,
+    };
+  }
+
+  const renameSheetMatch = trimmed.match(/^\/?(?:rename[_ ]sheet)\s+(.+?)\s+(?:to|=>)\s+(.+)$/i);
+  if (renameSheetMatch) {
+    return {
+      commandType: 'excel.renameWorksheet',
+      sheetName: renameSheetMatch[1].trim(),
+      newSheetName: renameSheetMatch[2].trim(),
+      confirmed: false,
+    };
+  }
+
+  const deleteSheetMatch = trimmed.match(/^\/?(?:delete[_ ]sheet)\s+(.+)$/i);
+  if (deleteSheetMatch) {
+    return {
+      commandType: 'excel.deleteWorksheet',
+      sheetName: deleteSheetMatch[1].trim(),
+      confirmed: false,
+    };
+  }
+
+  const writeRangeMatch = trimmed.match(/^\/?(?:write[_ ]range)\s+([^\s=]+)\s*=\s*(.+)$/i);
+  if (writeRangeMatch) {
+    return {
+      commandType: 'excel.writeRange',
+      targetAddress: writeRangeMatch[1].trim(),
+      values: parseWriteRows(writeRangeMatch[2]),
+      confirmed: false,
+    };
+  }
+
+  return null;
+}
+
+function parseWriteRows(value: string): string[][] {
+  return value
+    .split('|')
+    .map((row) => row.split(',').map((cell) => cell.trim()))
+    .filter((row) => row.some((cell) => cell.length > 0));
+}
+
+function createMessageId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 export default App;

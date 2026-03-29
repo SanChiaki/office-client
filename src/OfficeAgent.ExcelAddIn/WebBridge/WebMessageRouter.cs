@@ -19,6 +19,8 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
         };
 
         private readonly IExcelContextService excelContextService;
+        private readonly IExcelCommandExecutor excelCommandExecutor;
+        private readonly ConfirmationService confirmationService = new ConfirmationService();
         private readonly HashSet<string> allowedTypes = new HashSet<string>(StringComparer.Ordinal)
         {
             BridgeMessageTypes.Ping,
@@ -35,11 +37,13 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
         public WebMessageRouter(
             FileSessionStore sessionStore,
             FileSettingsStore settingsStore,
-            IExcelContextService excelContextService)
+            IExcelContextService excelContextService,
+            IExcelCommandExecutor excelCommandExecutor)
         {
             this.sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
             this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
             this.excelContextService = excelContextService ?? throw new ArgumentNullException(nameof(excelContextService));
+            this.excelCommandExecutor = excelCommandExecutor ?? throw new ArgumentNullException(nameof(excelCommandExecutor));
         }
 
         public string Route(string rawRequestJson)
@@ -141,6 +145,7 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                 case BridgeMessageTypes.SaveSettings:
                     return SaveSettings(request);
                 case BridgeMessageTypes.ExecuteExcelCommand:
+                    return ExecuteExcelCommand(request);
                 case BridgeMessageTypes.RunSkill:
                     return Error(
                         request.Type,
@@ -210,6 +215,54 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
         private static bool IsStringToken(JToken token)
         {
             return token != null && token.Type == JTokenType.String;
+        }
+
+        private WebMessageResponse ExecuteExcelCommand(WebMessageRequest request)
+        {
+            if (request.Payload == null || request.Payload.Type != JTokenType.Object || !request.Payload.HasValues)
+            {
+                return Error(
+                    request.Type,
+                    request.RequestId,
+                    code: "malformed_payload",
+                    message: "bridge.executeExcelCommand requires a command payload.");
+            }
+
+            try
+            {
+                var command = request.Payload.ToObject<ExcelCommand>() ?? new ExcelCommand();
+                confirmationService.Validate(command);
+
+                var result = confirmationService.RequiresConfirmation(command) && !command.Confirmed
+                    ? excelCommandExecutor.Preview(command)
+                    : excelCommandExecutor.Execute(command);
+
+                return Success(request.Type, request.RequestId, result);
+            }
+            catch (JsonException)
+            {
+                return Error(
+                    request.Type,
+                    request.RequestId,
+                    code: "malformed_payload",
+                    message: "bridge.executeExcelCommand requires a valid command payload.");
+            }
+            catch (ArgumentException error)
+            {
+                return Error(
+                    request.Type,
+                    request.RequestId,
+                    code: "invalid_command",
+                    message: error.Message);
+            }
+            catch (InvalidOperationException error)
+            {
+                return Error(
+                    request.Type,
+                    request.RequestId,
+                    code: "command_failed",
+                    message: error.Message);
+            }
         }
 
         private static WebMessageResponse Success(string type, string requestId, object payload)

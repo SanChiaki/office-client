@@ -115,6 +115,69 @@ describe('NativeBridge', () => {
     });
   });
 
+  it('returns write-command previews in browser preview mode', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await expect(bridge.executeExcelCommand({
+      commandType: 'excel.renameWorksheet',
+      sheetName: 'Sheet1',
+      newSheetName: 'Summary',
+      confirmed: false,
+    })).resolves.toEqual({
+      commandType: 'excel.renameWorksheet',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: 'Confirm this Excel action before the workbook is modified.',
+      preview: {
+        title: 'Rename worksheet',
+        summary: 'Rename worksheet "Sheet1" to "Summary"',
+        details: ['Workbook: Browser Preview.xlsx'],
+      },
+      selectionContext: {
+        hasSelection: true,
+        workbookName: 'Browser Preview.xlsx',
+        sheetName: 'Sheet1',
+        address: 'A1:C4',
+        rowCount: 4,
+        columnCount: 3,
+        isContiguous: true,
+        headerPreview: ['Name', 'Region', 'Amount'],
+        sampleRows: [
+          ['Project A', 'CN', '42'],
+          ['Project B', 'US', '36'],
+        ],
+        warningMessage: null,
+      },
+    });
+  });
+
+  it('rejects invalid write-range payloads in browser preview mode', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await expect(bridge.executeExcelCommand({
+      commandType: 'excel.writeRange',
+      targetAddress: 'Sheet2!A1:B2',
+      sheetName: 'Sheet1',
+      values: [['Name', 'Region']],
+      confirmed: false,
+    })).rejects.toMatchObject({
+      code: 'invalid_command',
+    });
+  });
+
+  it('rejects sheet-qualified write targets without a cell reference in browser preview mode', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await expect(bridge.executeExcelCommand({
+      commandType: 'excel.writeRange',
+      targetAddress: 'Sheet1!',
+      values: [['Name', 'Region']],
+      confirmed: false,
+    })).rejects.toMatchObject({
+      code: 'invalid_command',
+    });
+  });
+
   it('sends getSettings requests through the structured bridge contract', async () => {
     const webView = createMockWebView();
     const bridge = new NativeBridge(webView);
@@ -139,6 +202,38 @@ describe('NativeBridge', () => {
       apiKey: '',
       baseUrl: 'https://api.example.com',
       model: 'gpt-5-mini',
+    });
+  });
+
+  it('sends executeExcelCommand requests through the structured bridge contract', async () => {
+    const webView = createMockWebView();
+    const bridge = new NativeBridge(webView);
+
+    const pending = bridge.executeExcelCommand({
+      commandType: 'excel.readSelectionTable',
+      confirmed: false,
+    });
+    const [request] = webView.postedMessages as Array<{ type: string; requestId: string }>;
+
+    expect(request.type).toBe('bridge.executeExcelCommand');
+
+    webView.dispatch({
+      type: 'bridge.executeExcelCommand',
+      requestId: request.requestId,
+      ok: true,
+      payload: {
+        commandType: 'excel.readSelectionTable',
+        requiresConfirmation: false,
+        status: 'completed',
+        message: 'Read selection from Sheet1 A1:C4.',
+      },
+    });
+
+    await expect(pending).resolves.toEqual({
+      commandType: 'excel.readSelectionTable',
+      requiresConfirmation: false,
+      status: 'completed',
+      message: 'Read selection from Sheet1 A1:C4.',
     });
   });
 
