@@ -18,14 +18,17 @@ namespace OfficeAgent.Infrastructure.Tests
             {
                 Content = new StringContent(
                     "{"
-                    + "\"status\":\"completed\","
-                    + "\"output\":[{"
-                    + "\"type\":\"message\","
+                    + "\"id\":\"chatcmpl-123\","
+                    + "\"object\":\"chat.completion\","
+                    + "\"created\":1739177682,"
+                    + "\"model\":\"gpt-5-mini\","
+                    + "\"choices\":[{"
+                    + "\"index\":0,"
+                    + "\"message\":{"
                     + "\"role\":\"assistant\","
-                    + "\"content\":[{"
-                    + "\"type\":\"output_text\","
-                    + "\"text\":\"{\\\"mode\\\":\\\"message\\\",\\\"assistantMessage\\\":\\\"ok\\\"}\""
-                    + "}]"
+                    + "\"content\":\"{\\\"mode\\\":\\\"message\\\",\\\"assistantMessage\\\":\\\"ok\\\",\\\"step\\\":null,\\\"plan\\\":null}\""
+                    + "},"
+                    + "\"finish_reason\":\"stop\""
                     + "}]"
                     + "}"),
             });
@@ -44,14 +47,14 @@ namespace OfficeAgent.Infrastructure.Tests
                 UserInput = "Create a summary sheet",
             });
 
-            Assert.Equal("https://api.internal.example/v1/responses", handler.LastRequest.RequestUri.ToString());
+            Assert.Equal("https://api.internal.example/v1/chat/completions", handler.LastRequest.RequestUri.ToString());
             Assert.Equal("Bearer", handler.LastRequest.Headers.Authorization?.Scheme);
             Assert.Equal("secret-token", handler.LastRequest.Headers.Authorization?.Parameter);
             Assert.Contains("Create a summary sheet", handler.LastBody, StringComparison.Ordinal);
             Assert.Contains("gpt-5-mini", handler.LastBody, StringComparison.Ordinal);
-            Assert.Contains("\"type\":\"json_object\"", handler.LastBody, StringComparison.Ordinal);
+            Assert.Contains("\"response_format\":{\"type\":\"json_object\"}", handler.LastBody, StringComparison.Ordinal);
             Assert.DoesNotContain("json_schema", handler.LastBody, StringComparison.Ordinal);
-            Assert.Equal("{\"mode\":\"message\",\"assistantMessage\":\"ok\"}", response);
+            Assert.Equal("{\"mode\":\"message\",\"assistantMessage\":\"ok\",\"step\":null,\"plan\":null}", response);
         }
 
         [Fact]
@@ -61,14 +64,17 @@ namespace OfficeAgent.Infrastructure.Tests
             {
                 Content = new StringContent(
                     "{"
-                    + "\"status\":\"completed\","
-                    + "\"output\":[{"
-                    + "\"type\":\"message\","
+                    + "\"id\":\"chatcmpl-123\","
+                    + "\"object\":\"chat.completion\","
+                    + "\"created\":1739177682,"
+                    + "\"model\":\"gpt-5-mini\","
+                    + "\"choices\":[{"
+                    + "\"index\":0,"
+                    + "\"message\":{"
                     + "\"role\":\"assistant\","
-                    + "\"content\":[{"
-                    + "\"type\":\"output_text\","
-                    + "\"text\":\"{\\\"mode\\\":\\\"message\\\",\\\"assistantMessage\\\":\\\"ok\\\"}\""
-                    + "}]"
+                    + "\"content\":\"{\\\"mode\\\":\\\"message\\\",\\\"assistantMessage\\\":\\\"ok\\\",\\\"step\\\":null,\\\"plan\\\":null}\""
+                    + "},"
+                    + "\"finish_reason\":\"stop\""
                     + "}]"
                     + "}"),
             });
@@ -87,15 +93,15 @@ namespace OfficeAgent.Infrastructure.Tests
                 UserInput = "Create a summary sheet",
             });
 
-            Assert.Equal("https://api.internal.example/v1/responses", handler.LastRequest.RequestUri.ToString());
+            Assert.Equal("https://api.internal.example/v1/chat/completions", handler.LastRequest.RequestUri.ToString());
         }
 
         [Fact]
-        public void CompleteFallsBackToTheLegacyPlannerEndpointWhenResponsesApiIsUnavailable()
+        public void CompleteFallsBackToTheLegacyPlannerEndpointWhenChatCompletionsApiIsUnavailable()
         {
             var handler = new RecordingHandler(request =>
             {
-                if (request.RequestUri.ToString() == "https://api.internal.example/v1/responses")
+                if (request.RequestUri.ToString() == "https://api.internal.example/v1/chat/completions")
                 {
                     return new HttpResponseMessage(HttpStatusCode.NotFound)
                     {

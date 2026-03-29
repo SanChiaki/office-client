@@ -51,7 +51,7 @@ namespace OfficeAgent.Infrastructure.Http
 
             try
             {
-                return CompleteWithOpenAiCompatibleResponses(baseUri, settings, request);
+                return CompleteWithOpenAiCompatibleChatCompletions(baseUri, settings, request);
             }
             catch (LegacyPlannerFallbackException)
             {
@@ -59,28 +59,25 @@ namespace OfficeAgent.Infrastructure.Http
             }
         }
 
-        private string CompleteWithOpenAiCompatibleResponses(Uri baseUri, AppSettings settings, PlannerRequest request)
+        private string CompleteWithOpenAiCompatibleChatCompletions(Uri baseUri, AppSettings settings, PlannerRequest request)
         {
-            var endpoint = BuildResponsesEndpoint(baseUri);
+            var endpoint = BuildChatCompletionsEndpoint(baseUri);
             var payload = JsonConvert.SerializeObject(new
             {
                 model = settings.Model,
-                input = new object[]
+                messages = new object[]
                 {
-                    CreateTextMessage("system", BuildPlannerInstructions()),
-                    CreateTextMessage("user", BuildPlannerPrompt(request)),
+                    CreateChatMessage("system", BuildPlannerInstructions()),
+                    CreateChatMessage("user", BuildPlannerPrompt(request)),
                 },
-                text = new
+                response_format = new
                 {
-                    format = new
-                    {
-                        type = "json_object",
-                    },
+                    type = "json_object",
                 },
             });
 
             var responseBody = SendRequest(endpoint, settings.ApiKey, payload, allowLegacyFallback: true);
-            return ExtractResponsesText(responseBody);
+            return ExtractChatCompletionsText(responseBody);
         }
 
         private string CompleteWithLegacyPlanner(Uri baseUri, AppSettings settings, PlannerRequest request)
@@ -126,31 +123,24 @@ namespace OfficeAgent.Infrastructure.Http
             }
         }
 
-        private static Uri BuildResponsesEndpoint(Uri baseUri)
+        private static Uri BuildChatCompletionsEndpoint(Uri baseUri)
         {
             var absoluteUri = baseUri.AbsoluteUri.TrimEnd('/');
             var absolutePath = baseUri.AbsolutePath?.Trim('/') ?? string.Empty;
             if (string.IsNullOrWhiteSpace(absolutePath))
             {
-                return new Uri($"{absoluteUri}/v1/responses");
+                return new Uri($"{absoluteUri}/v1/chat/completions");
             }
 
-            return new Uri($"{absoluteUri}/responses");
+            return new Uri($"{absoluteUri}/chat/completions");
         }
 
-        private static object CreateTextMessage(string role, string text)
+        private static object CreateChatMessage(string role, string text)
         {
             return new
             {
                 role,
-                content = new object[]
-                {
-                    new
-                    {
-                        type = "input_text",
-                        text,
-                    },
-                },
+                content = text,
             };
         }
 
@@ -192,48 +182,47 @@ namespace OfficeAgent.Infrastructure.Http
                 + "If the request cannot be completed safely with the supported actions, answer with mode=message.";
         }
 
-        private static string ExtractResponsesText(string responseBody)
+        private static string ExtractChatCompletionsText(string responseBody)
         {
             try
             {
                 var parsed = JObject.Parse(responseBody);
-                var outputText = parsed["output_text"]?.Value<string>();
-                if (!string.IsNullOrWhiteSpace(outputText))
+                var content = parsed["choices"]?[0]?["message"]?["content"];
+                if (content == null)
                 {
-                    return outputText;
+                    throw new InvalidOperationException("Planner API returned a chat completion payload without message content.");
                 }
 
-                var outputItems = parsed["output"] as JArray;
-                if (outputItems != null)
+                if (content.Type == JTokenType.String)
                 {
-                    foreach (var outputItem in outputItems)
+                    return content.Value<string>();
+                }
+
+                if (content is JArray contentItems)
+                {
+                    foreach (var contentItem in contentItems)
                     {
-                        var contentItems = outputItem["content"] as JArray;
-                        if (contentItems == null)
+                        var contentType = contentItem["type"]?.Value<string>();
+                        if (!string.Equals(contentType, "text", StringComparison.Ordinal) &&
+                            !string.Equals(contentType, "output_text", StringComparison.Ordinal))
                         {
                             continue;
                         }
 
-                        foreach (var contentItem in contentItems)
+                        var contentText = contentItem["text"]?.Value<string>();
+                        if (!string.IsNullOrWhiteSpace(contentText))
                         {
-                            if (string.Equals(contentItem["type"]?.Value<string>(), "output_text", StringComparison.Ordinal))
-                            {
-                                var contentText = contentItem["text"]?.Value<string>();
-                                if (!string.IsNullOrWhiteSpace(contentText))
-                                {
-                                    return contentText;
-                                }
-                            }
+                            return contentText;
                         }
                     }
                 }
             }
             catch (JsonException)
             {
-                throw new InvalidOperationException("Planner API returned a non-JSON Responses payload.");
+                throw new InvalidOperationException("Planner API returned a non-JSON chat completion payload.");
             }
 
-            throw new InvalidOperationException("Planner API returned a Responses payload without planner text output.");
+            throw new InvalidOperationException("Planner API returned a chat completion payload without planner text output.");
         }
 
         private sealed class LegacyPlannerFallbackException : Exception
