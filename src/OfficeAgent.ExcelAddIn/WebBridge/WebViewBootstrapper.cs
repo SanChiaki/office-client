@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Newtonsoft.Json;
+using OfficeAgent.Core.Diagnostics;
 using OfficeAgent.Core.Models;
 using OfficeAgent.Core.Services;
 using OfficeAgent.Infrastructure.Storage;
@@ -31,6 +32,7 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
 
         public async Task InitializeAsync()
         {
+            OfficeAgentLog.Info("webview", "initialize.begin", "Initializing WebView2.");
             var environment = await CoreWebView2Environment.CreateAsync(
                 browserExecutableFolder: null,
                 userDataFolder: GetUserDataFolder());
@@ -42,6 +44,7 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
             var frontendFolder = ResolveFrontendFolder();
             if (frontendFolder == null)
             {
+                OfficeAgentLog.Warn("webview", "frontend.missing", "Frontend assets were not found for the task pane.");
                 webView.NavigateToString(BuildFallbackHtml());
                 return;
             }
@@ -52,6 +55,7 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                 CoreWebView2HostResourceAccessKind.Allow);
 
             webView.Source = new Uri($"https://{VirtualHost}/index.html");
+            OfficeAgentLog.Info("webview", "navigate.index", "Navigated WebView2 to the packaged frontend.");
         }
 
         private static string GetUserDataFolder()

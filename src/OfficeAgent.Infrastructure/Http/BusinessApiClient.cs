@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using Newtonsoft.Json;
+using OfficeAgent.Core.Diagnostics;
 using OfficeAgent.Core.Models;
 using OfficeAgent.Core.Services;
 using OfficeAgent.Infrastructure.Storage;
@@ -83,9 +84,11 @@ namespace OfficeAgent.Infrastructure.Http
                                 var errorBody = response.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
                                 if (attempt < 2 && IsRetryableStatusCode(response.StatusCode))
                                 {
+                                    OfficeAgentLog.Warn("business_api", "request.retry", $"Retrying upload_data after {(int)response.StatusCode} {response.ReasonPhrase}.", endpoint.ToString());
                                     continue;
                                 }
 
+                                OfficeAgentLog.Warn("business_api", "request.failed", $"Business API returned {(int)response.StatusCode} {response.ReasonPhrase}.", errorBody);
                                 throw new InvalidOperationException(
                                     FormatErrorMessage(response.StatusCode, response.ReasonPhrase, errorBody));
                             }
@@ -105,11 +108,13 @@ namespace OfficeAgent.Infrastructure.Http
                     {
                         if (attempt >= 2)
                         {
+                            OfficeAgentLog.Error("business_api", "request.exception", "Business API request failed with an HTTP transport error.", error, endpoint.ToString());
                             throw new InvalidOperationException($"Business API request failed: {error.Message}", error);
                         }
                     }
                     catch (OperationCanceledException error)
                     {
+                        OfficeAgentLog.Error("business_api", "request.timeout", "Business API request timed out.", error, endpoint.ToString());
                         throw new InvalidOperationException(
                             $"Business API request timed out after {httpClient.Timeout.TotalSeconds:0} seconds.",
                             error);
@@ -117,6 +122,7 @@ namespace OfficeAgent.Infrastructure.Http
                 }
             }
 
+            OfficeAgentLog.Warn("business_api", "request.exhausted", "Business API request failed after retrying.", endpoint.ToString());
             throw new InvalidOperationException("Business API request failed after retrying.");
         }
 

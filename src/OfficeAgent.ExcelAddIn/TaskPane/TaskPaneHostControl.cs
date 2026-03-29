@@ -2,6 +2,7 @@ using System;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
+using OfficeAgent.Core.Diagnostics;
 using OfficeAgent.Core.Models;
 using OfficeAgent.Core.Services;
 using OfficeAgent.ExcelAddIn.WebBridge;
@@ -49,6 +50,7 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
             {
                 await bootstrapper.InitializeAsync();
                 isBridgeReady = true;
+                OfficeAgentLog.Info("webview", "initialized", "WebView2 task pane initialized.");
                 if (pendingSelectionContext != null)
                 {
                     bootstrapper.PublishSelectionContext(pendingSelectionContext);
@@ -58,10 +60,22 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
             catch (WebView2RuntimeNotFoundException)
             {
                 webView.Visible = false;
+                OfficeAgentLog.Warn("webview", "runtime.missing", "WebView2 Runtime is missing.");
                 Controls.Add(new Label
                 {
                     Dock = DockStyle.Fill,
                     Text = "WebView2 Runtime is required to render OfficeAgent.",
+                    TextAlign = System.Drawing.ContentAlignment.MiddleCenter
+                });
+            }
+            catch (Exception error)
+            {
+                webView.Visible = false;
+                OfficeAgentLog.Error("webview", "initialize.failed", "WebView2 initialization failed.", error);
+                Controls.Add(new Label
+                {
+                    Dock = DockStyle.Fill,
+                    Text = "OfficeAgent could not initialize the task pane. Check the local log and reopen Excel.",
                     TextAlign = System.Drawing.ContentAlignment.MiddleCenter
                 });
             }

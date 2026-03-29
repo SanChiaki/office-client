@@ -272,6 +272,57 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Equal("把选中数据上传到项目A", orchestrator.LastEnvelope.UserInput);
         }
 
+        [Fact]
+        public void ExecuteExcelCommandReturnsInternalErrorForUnexpectedExecutorFailures()
+        {
+            var sessionStore = new FileSessionStore(Path.Combine(tempDirectory, "sessions"));
+            var settingsStore = new FileSettingsStore(
+                Path.Combine(tempDirectory, "settings.json"),
+                new DpapiSecretProtector());
+            var executor = new FakeExcelCommandExecutor
+            {
+                ExecuteException = new Exception("boom"),
+            };
+
+            var router = CreateRouter(
+                sessionStore,
+                settingsStore,
+                new FakeExcelContextService(SelectionContext.Empty("No selection available.")),
+                executor);
+            var responseJson = InvokeRoute(
+                router,
+                "{\"type\":\"bridge.executeExcelCommand\",\"requestId\":\"req-1\",\"payload\":{\"commandType\":\"excel.readSelectionTable\",\"confirmed\":false}}");
+
+            Assert.Contains("\"ok\":false", responseJson);
+            Assert.Contains("\"code\":\"internal_error\"", responseJson);
+        }
+
+        [Fact]
+        public void RunSkillReturnsInternalErrorForUnexpectedOrchestratorFailures()
+        {
+            var sessionStore = new FileSessionStore(Path.Combine(tempDirectory, "sessions"));
+            var settingsStore = new FileSettingsStore(
+                Path.Combine(tempDirectory, "settings.json"),
+                new DpapiSecretProtector());
+            var orchestrator = new FakeAgentOrchestrator
+            {
+                ExceptionToThrow = new Exception("boom"),
+            };
+
+            var router = CreateRouter(
+                sessionStore,
+                settingsStore,
+                new FakeExcelContextService(SelectionContext.Empty("No selection available.")),
+                new FakeExcelCommandExecutor(),
+                orchestrator);
+            var responseJson = InvokeRoute(
+                router,
+                "{\"type\":\"bridge.runSkill\",\"requestId\":\"req-1\",\"payload\":{\"userInput\":\"/upload_data to ProjectA\",\"confirmed\":false}}");
+
+            Assert.Contains("\"ok\":false", responseJson);
+            Assert.Contains("\"code\":\"internal_error\"", responseJson);
+        }
+
         public void Dispose()
         {
             if (Directory.Exists(tempDirectory))
@@ -369,6 +420,8 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             public int PreviewCalls { get; private set; }
 
+            public Exception ExecuteException { get; set; }
+
             public ExcelCommandResult ExecuteResult { get; set; } = new ExcelCommandResult
             {
                 CommandType = ExcelCommandTypes.ReadSelectionTable,
@@ -394,6 +447,11 @@ namespace OfficeAgent.ExcelAddIn.Tests
             public ExcelCommandResult Execute(ExcelCommand command)
             {
                 ExecuteCalls++;
+                if (ExecuteException != null)
+                {
+                    throw ExecuteException;
+                }
+
                 return ExecuteResult;
             }
         }
@@ -401,6 +459,8 @@ namespace OfficeAgent.ExcelAddIn.Tests
         private sealed class FakeAgentOrchestrator : IAgentOrchestrator
         {
             public AgentCommandEnvelope LastEnvelope { get; private set; }
+
+            public Exception ExceptionToThrow { get; set; }
 
             public AgentCommandResult Result { get; set; } = new AgentCommandResult
             {
@@ -412,6 +472,11 @@ namespace OfficeAgent.ExcelAddIn.Tests
             public AgentCommandResult Execute(AgentCommandEnvelope envelope)
             {
                 LastEnvelope = envelope;
+                if (ExceptionToThrow != null)
+                {
+                    throw ExceptionToThrow;
+                }
+
                 return Result;
             }
         }

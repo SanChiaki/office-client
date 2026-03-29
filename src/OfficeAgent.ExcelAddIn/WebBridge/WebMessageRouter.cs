@@ -4,6 +4,7 @@ using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
+using OfficeAgent.Core.Diagnostics;
 using OfficeAgent.Core.Models;
 using OfficeAgent.Core.Services;
 using OfficeAgent.Infrastructure.Storage;
@@ -92,71 +93,85 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                     message: $"Message type '{request.Type}' is not allowed.");
             }
 
-            switch (request.Type)
+            OfficeAgentLog.Info("bridge", "request.received", $"Received {request.Type}.", request.RequestId);
+
+            try
             {
-                case BridgeMessageTypes.Ping:
-                    if (HasUnexpectedPayload(request.Payload))
-                    {
-                        return Error(
-                            request.Type,
-                            request.RequestId,
-                            code: "malformed_payload",
-                            message: "bridge.ping does not accept a payload.");
-                    }
-
-                    return Success(
-                        request.Type,
-                        request.RequestId,
-                        new PingPayload
+                switch (request.Type)
+                {
+                    case BridgeMessageTypes.Ping:
+                        if (HasUnexpectedPayload(request.Payload))
                         {
-                            Host = "OfficeAgent.ExcelAddIn",
-                            Version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "dev",
-                        });
-                case BridgeMessageTypes.GetSettings:
-                    if (HasUnexpectedPayload(request.Payload))
-                    {
+                            return Error(
+                                request.Type,
+                                request.RequestId,
+                                code: "malformed_payload",
+                                message: "bridge.ping does not accept a payload.");
+                        }
+
+                        return Success(
+                            request.Type,
+                            request.RequestId,
+                            new PingPayload
+                            {
+                                Host = "OfficeAgent.ExcelAddIn",
+                                Version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "dev",
+                            });
+                    case BridgeMessageTypes.GetSettings:
+                        if (HasUnexpectedPayload(request.Payload))
+                        {
+                            return Error(
+                                request.Type,
+                                request.RequestId,
+                                code: "malformed_payload",
+                                message: "bridge.getSettings does not accept a payload.");
+                        }
+
+                        return Success(request.Type, request.RequestId, settingsStore.Load());
+                    case BridgeMessageTypes.GetSessions:
+                        if (HasUnexpectedPayload(request.Payload))
+                        {
+                            return Error(
+                                request.Type,
+                                request.RequestId,
+                                code: "malformed_payload",
+                                message: "bridge.getSessions does not accept a payload.");
+                        }
+
+                        return Success(request.Type, request.RequestId, sessionStore.Load());
+                    case BridgeMessageTypes.GetSelectionContext:
+                        if (HasUnexpectedPayload(request.Payload))
+                        {
+                            return Error(
+                                request.Type,
+                                request.RequestId,
+                                code: "malformed_payload",
+                                message: "bridge.getSelectionContext does not accept a payload.");
+                        }
+
+                        return Success(request.Type, request.RequestId, excelContextService.GetCurrentSelectionContext());
+                    case BridgeMessageTypes.SaveSettings:
+                        return SaveSettings(request);
+                    case BridgeMessageTypes.ExecuteExcelCommand:
+                        return ExecuteExcelCommand(request);
+                    case BridgeMessageTypes.RunSkill:
+                        return RunSkill(request);
+                    default:
                         return Error(
                             request.Type,
                             request.RequestId,
-                            code: "malformed_payload",
-                            message: "bridge.getSettings does not accept a payload.");
-                    }
-
-                    return Success(request.Type, request.RequestId, settingsStore.Load());
-                case BridgeMessageTypes.GetSessions:
-                    if (HasUnexpectedPayload(request.Payload))
-                    {
-                        return Error(
-                            request.Type,
-                            request.RequestId,
-                            code: "malformed_payload",
-                            message: "bridge.getSessions does not accept a payload.");
-                    }
-
-                    return Success(request.Type, request.RequestId, sessionStore.Load());
-                case BridgeMessageTypes.GetSelectionContext:
-                    if (HasUnexpectedPayload(request.Payload))
-                    {
-                        return Error(
-                            request.Type,
-                            request.RequestId,
-                            code: "malformed_payload",
-                            message: "bridge.getSelectionContext does not accept a payload.");
-                    }
-
-                    return Success(request.Type, request.RequestId, excelContextService.GetCurrentSelectionContext());
-                case BridgeMessageTypes.SaveSettings:
-                    return SaveSettings(request);
-                case BridgeMessageTypes.ExecuteExcelCommand:
-                    return ExecuteExcelCommand(request);
-                case BridgeMessageTypes.RunSkill:
-                    return RunSkill(request);
-                default:
-                    return Error(
-                        request.Type,
-                        request.RequestId,
-                        code: "unknown_message",
-                        message: $"Message type '{request.Type}' is not allowed.");
+                            code: "unknown_message",
+                            message: $"Message type '{request.Type}' is not allowed.");
+                }
+            }
+            catch (Exception error)
+            {
+                OfficeAgentLog.Error("bridge", "request.failed", $"Unhandled bridge failure while processing {request.Type}.", error, request.RequestId);
+                return Error(
+                    request.Type,
+                    request.RequestId,
+                    code: "internal_error",
+                    message: "OfficeAgent hit an unexpected error. Check the local log and try again.");
             }
         }
 

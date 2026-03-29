@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using OfficeAgent.Core.Diagnostics;
 using OfficeAgent.Core.Models;
 using OfficeAgent.Core.Services;
 
@@ -9,6 +10,7 @@ namespace OfficeAgent.Core.Skills
 {
     public sealed class UploadDataSkill : IAgentSkill
     {
+        private const string UploadToChinese = "\u4E0A\u4F20\u5230";
         private readonly IExcelCommandExecutor excelCommandExecutor;
         private readonly IUploadDataGateway uploadDataGateway;
 
@@ -36,6 +38,8 @@ namespace OfficeAgent.Core.Skills
 
                 ValidateConfirmedPreview(envelope.UploadPreview);
                 var uploadResult = uploadDataGateway.Upload(envelope.UploadPreview);
+                OfficeAgentLog.Info("skill.upload_data", "completed", $"Uploaded {uploadResult.SavedCount} row(s) to {envelope.UploadPreview.ProjectName}.");
+
                 return new AgentCommandResult
                 {
                     Route = AgentRouteTypes.Skill,
@@ -61,6 +65,8 @@ namespace OfficeAgent.Core.Skills
             }
 
             var preview = BuildUploadPreview(ExtractProjectName(envelope.UserInput), table);
+            OfficeAgentLog.Info("skill.upload_data", "preview.created", $"Prepared upload preview for {preview.ProjectName}.", preview.Address);
+
             return new AgentCommandResult
             {
                 Route = AgentRouteTypes.Skill,
@@ -124,10 +130,10 @@ namespace OfficeAgent.Core.Skills
                 normalizedInput = normalizedInput.Substring("/upload_data".Length).Trim();
             }
 
-            var chineseIndex = normalizedInput.LastIndexOf("上传到", StringComparison.Ordinal);
+            var chineseIndex = normalizedInput.LastIndexOf(UploadToChinese, StringComparison.Ordinal);
             if (chineseIndex >= 0)
             {
-                var projectName = normalizedInput.Substring(chineseIndex + "上传到".Length).Trim(' ', '。', '.');
+                var projectName = normalizedInput.Substring(chineseIndex + UploadToChinese.Length).Trim(' ', '\u3002', '.');
                 if (!string.IsNullOrWhiteSpace(projectName))
                 {
                     return projectName;

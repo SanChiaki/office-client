@@ -1,4 +1,5 @@
 using Microsoft.Office.Core;
+using OfficeAgent.Core.Diagnostics;
 using OfficeAgent.Core.Models;
 using OfficeAgent.Core.Services;
 using OfficeAgent.Infrastructure.Storage;
@@ -36,6 +37,7 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
         {
             EnsureCreated();
             taskPane.Visible = !taskPane.Visible;
+            OfficeAgentLog.Info("taskpane", "visibility.toggled", $"Task pane visible: {taskPane.Visible}.");
             if (taskPane.Visible)
             {
                 PublishCurrentSelectionContext();
@@ -46,6 +48,7 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
         {
             EnsureCreated();
             taskPane.Visible = true;
+            OfficeAgentLog.Info("taskpane", "visibility.shown", "Task pane shown.");
             PublishCurrentSelectionContext();
         }
 
@@ -66,6 +69,7 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
             taskPane.DockPosition = MsoCTPDockPosition.msoCTPDockPositionRight;
             taskPane.Width = 420;
             taskPane.Visible = false;
+            OfficeAgentLog.Info("taskpane", "created", "Custom task pane created.");
         }
 
         private void PublishCurrentSelectionContext()

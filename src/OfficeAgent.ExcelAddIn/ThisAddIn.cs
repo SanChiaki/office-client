@@ -1,10 +1,12 @@
 using System;
 using System.IO;
+using OfficeAgent.Core.Diagnostics;
 using OfficeAgent.Core.Orchestration;
 using OfficeAgent.Core.Services;
 using OfficeAgent.Core.Skills;
 using OfficeAgent.ExcelAddIn.Excel;
 using OfficeAgent.ExcelAddIn.TaskPane;
+using OfficeAgent.Infrastructure.Diagnostics;
 using OfficeAgent.Infrastructure.Http;
 using OfficeAgent.Infrastructure.Security;
 using OfficeAgent.Infrastructure.Storage;
@@ -26,6 +28,9 @@ namespace OfficeAgent.ExcelAddIn
             var appDataDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "OfficeAgent");
+            var logSink = new FileLogSink(Path.Combine(appDataDirectory, "logs", "officeagent.log"));
+            OfficeAgentLog.Configure(logSink.Write);
+            OfficeAgentLog.Info("host", "startup.begin", "Starting OfficeAgent Excel add-in.");
             SessionStore = new FileSessionStore(Path.Combine(appDataDirectory, "sessions"));
             SettingsStore = new FileSettingsStore(
                 Path.Combine(appDataDirectory, "settings.json"),
@@ -36,11 +41,14 @@ namespace OfficeAgent.ExcelAddIn
                 new UploadDataSkill(ExcelCommandExecutor, new BusinessApiClient(SettingsStore))));
             TaskPaneController = new TaskPaneController(this, SessionStore, SettingsStore, ExcelContextService, ExcelCommandExecutor, AgentOrchestrator);
             Application.SheetSelectionChange += Application_SheetSelectionChange;
+            OfficeAgentLog.Info("host", "startup.completed", "OfficeAgent Excel add-in started.");
         }
 
         private void ThisAddIn_Shutdown(object sender, EventArgs e)
         {
             Application.SheetSelectionChange -= Application_SheetSelectionChange;
+            OfficeAgentLog.Info("host", "shutdown", "OfficeAgent Excel add-in stopped.");
+            OfficeAgentLog.Reset();
         }
 
         private void InternalStartup()
@@ -51,6 +59,7 @@ namespace OfficeAgent.ExcelAddIn
 
         private void Application_SheetSelectionChange(object sh, ExcelInterop.Range target)
         {
+            OfficeAgentLog.Info("excel", "selection.changed", "Excel selection changed.");
             TaskPaneController?.PublishSelectionContext(ExcelContextService.GetCurrentSelectionContext());
         }
     }

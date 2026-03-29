@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Text.RegularExpressions;
+using OfficeAgent.Core.Diagnostics;
 using OfficeAgent.Core.Models;
 using OfficeAgent.Core.Services;
 
@@ -25,9 +26,11 @@ namespace OfficeAgent.Core.Orchestration
             if (!string.IsNullOrWhiteSpace(skillName))
             {
                 envelope.SkillName = skillName;
+                OfficeAgentLog.Info("agent", "route.skill", $"Routing to skill {skillName}.");
                 return skillRegistry.Resolve(skillName).Execute(envelope);
             }
 
+            OfficeAgentLog.Info("agent", "route.chat", "Falling back to chat route.");
             return new AgentCommandResult
             {
                 Route = AgentRouteTypes.Chat,
@@ -68,4 +71,3 @@ namespace OfficeAgent.Core.Orchestration
         }
     }
 }
-

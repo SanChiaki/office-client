@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using OfficeAgent.Core.Excel;
 using OfficeAgent.Core.Models;
 using OfficeAgent.Core.Services;
 using ExcelInterop = Microsoft.Office.Interop.Excel;
@@ -29,6 +30,10 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 case ExcelCommandTypes.WriteRange:
                     {
                         var target = ResolveTarget(command);
+                        var targetRange = target.Worksheet.Range[target.Address];
+                        ExcelOperationGuard.EnsureWorksheetAllowsMutation(target.Worksheet.Name, "write values", IsWorksheetProtected(target.Worksheet));
+                        ExcelOperationGuard.EnsureRangeAllowsWrite(target.Worksheet.Name, target.Address, HasMergedCells(targetRange));
+
                         return new ExcelCommandResult
                         {
                             CommandType = command.CommandType,
@@ -45,6 +50,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
                         };
                     }
                 case ExcelCommandTypes.AddWorksheet:
+                    ExcelOperationGuard.EnsureWorkbookStructureAllowsMutation("add worksheets", GetWorkbook().ProtectStructure);
                     return new ExcelCommandResult
                     {
                         CommandType = command.CommandType,
@@ -60,35 +66,47 @@ namespace OfficeAgent.ExcelAddIn.Excel
                         SelectionContext = excelContextService.GetCurrentSelectionContext(),
                     };
                 case ExcelCommandTypes.RenameWorksheet:
-                    return new ExcelCommandResult
                     {
-                        CommandType = command.CommandType,
-                        RequiresConfirmation = true,
-                        Status = "preview",
-                        Message = "Confirm worksheet rename before Excel is modified.",
-                        Preview = new ExcelCommandPreview
+                        ExcelOperationGuard.EnsureWorkbookStructureAllowsMutation("rename worksheets", GetWorkbook().ProtectStructure);
+                        var worksheet = GetWorksheet(command.SheetName);
+                        ExcelOperationGuard.EnsureWorksheetAllowsMutation(worksheet.Name, "rename worksheets", IsWorksheetProtected(worksheet));
+
+                        return new ExcelCommandResult
                         {
-                            Title = "Rename worksheet",
-                            Summary = $"Rename worksheet \"{command.SheetName}\" to \"{command.NewSheetName}\"",
-                            Details = new[] { $"Workbook: {GetWorkbook().Name}" },
-                        },
-                        SelectionContext = excelContextService.GetCurrentSelectionContext(),
-                    };
+                            CommandType = command.CommandType,
+                            RequiresConfirmation = true,
+                            Status = "preview",
+                            Message = "Confirm worksheet rename before Excel is modified.",
+                            Preview = new ExcelCommandPreview
+                            {
+                                Title = "Rename worksheet",
+                                Summary = $"Rename worksheet \"{command.SheetName}\" to \"{command.NewSheetName}\"",
+                                Details = new[] { $"Workbook: {GetWorkbook().Name}" },
+                            },
+                            SelectionContext = excelContextService.GetCurrentSelectionContext(),
+                        };
+                    }
                 case ExcelCommandTypes.DeleteWorksheet:
-                    return new ExcelCommandResult
                     {
-                        CommandType = command.CommandType,
-                        RequiresConfirmation = true,
-                        Status = "preview",
-                        Message = "Confirm worksheet deletion before Excel is modified.",
-                        Preview = new ExcelCommandPreview
+                        ExcelOperationGuard.EnsureWorkbookStructureAllowsMutation("delete worksheets", GetWorkbook().ProtectStructure);
+                        var worksheet = GetWorksheet(command.SheetName);
+                        ExcelOperationGuard.EnsureWorksheetAllowsMutation(worksheet.Name, "delete worksheets", IsWorksheetProtected(worksheet));
+
+                        return new ExcelCommandResult
                         {
-                            Title = "Delete worksheet",
-                            Summary = $"Delete worksheet \"{command.SheetName}\"",
-                            Details = new[] { $"Workbook: {GetWorkbook().Name}" },
-                        },
-                        SelectionContext = excelContextService.GetCurrentSelectionContext(),
-                    };
+                            CommandType = command.CommandType,
+                            RequiresConfirmation = true,
+                            Status = "preview",
+                            Message = "Confirm worksheet deletion before Excel is modified.",
+                            Preview = new ExcelCommandPreview
+                            {
+                                Title = "Delete worksheet",
+                                Summary = $"Delete worksheet \"{command.SheetName}\"",
+                                Details = new[] { $"Workbook: {GetWorkbook().Name}" },
+                            },
+                            SelectionContext = excelContextService.GetCurrentSelectionContext(),
+                        };
+                    }
                 default:
                     throw new ArgumentException($"Excel command type '{command.CommandType}' cannot be previewed.");
             }
@@ -121,22 +139,15 @@ namespace OfficeAgent.ExcelAddIn.Excel
         private ExcelCommandResult ExecuteReadSelectionTable()
         {
             var context = excelContextService.GetCurrentSelectionContext();
-            if (!context.HasSelection)
-            {
-                throw new InvalidOperationException(context.WarningMessage ?? "No selection available.");
-            }
-
-            if (!context.IsContiguous)
-            {
-                throw new InvalidOperationException(context.WarningMessage ?? "Multiple selection areas are not supported yet.");
-            }
-
             var selection = application.Selection as ExcelInterop.Range;
             var worksheet = application.ActiveSheet as ExcelInterop.Worksheet;
+
             if (selection == null || worksheet == null)
             {
                 throw new InvalidOperationException("No Excel range is selected.");
             }
+
+            ExcelOperationGuard.EnsureSelectionSupportsTableRead(context, HasMergedCells(selection));
 
             var values = ReadRangeValues(selection);
             var headers = values.Length > 0 ? values[0] : Array.Empty<string>();
@@ -169,6 +180,9 @@ namespace OfficeAgent.ExcelAddIn.Excel
             var rowCount = command.Values.Length;
             var columnCount = command.Values[0].Length;
             var range = target.Worksheet.Range[target.Address];
+            ExcelOperationGuard.EnsureWorksheetAllowsMutation(target.Worksheet.Name, "write values", IsWorksheetProtected(target.Worksheet));
+            ExcelOperationGuard.EnsureRangeAllowsWrite(target.Worksheet.Name, target.Address, HasMergedCells(range));
+
             var writeTarget = range.get_Resize(rowCount, columnCount);
             writeTarget.Value2 = ToObjectArray(command.Values);
 
@@ -185,6 +199,8 @@ namespace OfficeAgent.ExcelAddIn.Excel
         private ExcelCommandResult ExecuteAddWorksheet(ExcelCommand command)
         {
             var workbook = GetWorkbook();
+            ExcelOperationGuard.EnsureWorkbookStructureAllowsMutation("add worksheets", workbook.ProtectStructure);
+
             var worksheetCount = workbook.Worksheets.Count;
             var worksheet = workbook.Worksheets.Add(System.Type.Missing, workbook.Worksheets[worksheetCount], System.Type.Missing, System.Type.Missing) as ExcelInterop.Worksheet;
             worksheet.Name = command.NewSheetName;
@@ -201,7 +217,9 @@ namespace OfficeAgent.ExcelAddIn.Excel
 
         private ExcelCommandResult ExecuteRenameWorksheet(ExcelCommand command)
         {
+            ExcelOperationGuard.EnsureWorkbookStructureAllowsMutation("rename worksheets", GetWorkbook().ProtectStructure);
             var worksheet = GetWorksheet(command.SheetName);
+            ExcelOperationGuard.EnsureWorksheetAllowsMutation(worksheet.Name, "rename worksheets", IsWorksheetProtected(worksheet));
             worksheet.Name = command.NewSheetName;
 
             return new ExcelCommandResult
@@ -222,9 +240,11 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 throw new InvalidOperationException("Excel must keep at least one worksheet.");
             }
 
+            ExcelOperationGuard.EnsureWorkbookStructureAllowsMutation("delete worksheets", workbook.ProtectStructure);
             var worksheet = GetWorksheet(command.SheetName);
-            var previousDisplayAlerts = application.DisplayAlerts;
+            ExcelOperationGuard.EnsureWorksheetAllowsMutation(worksheet.Name, "delete worksheets", IsWorksheetProtected(worksheet));
 
+            var previousDisplayAlerts = application.DisplayAlerts;
             try
             {
                 application.DisplayAlerts = false;
@@ -269,7 +289,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 }
             }
 
-            throw new InvalidOperationException($"Worksheet '{worksheetName}' was not found.");
+            throw new InvalidOperationException($"Worksheet '{worksheetName}' was not found in the active workbook. The workbook may have been closed or changed.");
         }
 
         private (ExcelInterop.Worksheet Worksheet, string Address) ResolveTarget(ExcelCommand command)
@@ -354,6 +374,16 @@ namespace OfficeAgent.ExcelAddIn.Excel
             }
 
             return details;
+        }
+
+        private static bool HasMergedCells(ExcelInterop.Range range)
+        {
+            return range?.MergeCells is bool hasMergedCells && hasMergedCells;
+        }
+
+        private static bool IsWorksheetProtected(ExcelInterop.Worksheet worksheet)
+        {
+            return worksheet != null && worksheet.ProtectContents;
         }
     }
 }
