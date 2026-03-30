@@ -452,11 +452,6 @@ body {
     font-size: 1.2rem;
   }
 
-  .composer__actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
   .composer__actions .selection-pill {
     max-width: 100%;
   }
