@@ -40,7 +40,7 @@ type PendingConfirmation = {
 };
 
 export function App() {
-  const [bridgeStatus, setBridgeStatus] = useState('Connecting to native host...');
+  const [bridgeStatus, setBridgeStatus] = useState('正在连接宿主...');
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState('');
   const [isSessionsDrawerOpen, setIsSessionsDrawerOpen] = useState(false);
@@ -75,14 +75,14 @@ export function App() {
           return;
         }
 
-        setBridgeStatus(`Connected to ${result.host} (${result.version})`);
+        setBridgeStatus(`已连接 ${result.host} (${result.version})`);
       })
       .catch((error: Error) => {
         if (!isActive) {
           return;
         }
 
-        setBridgeStatus(`Native bridge unavailable: ${error.message}`);
+        setBridgeStatus(`宿主不可用: ${error.message}`);
       });
 
     nativeBridge
@@ -130,7 +130,7 @@ export function App() {
           setDraftSettings(DEFAULT_SETTINGS);
         }
         setIsSettingsLoading(false);
-        setSettingsLoadError('Unable to load settings from native host.');
+        setSettingsLoadError('无法从宿主加载设置。');
         setSettingsSaveError('');
       });
 
@@ -195,7 +195,7 @@ export function App() {
       top: threadElement.scrollHeight,
       behavior: 'auto',
     });
-  }, [activeSession?.id, activeThreadMessages.length]);
+  }, [activeSession?.id, activeThreadMessages.length, isCommandPending]);
 
   function resetDraftSettings() {
     setDraftSettings(settings ?? DEFAULT_SETTINGS);
@@ -289,7 +289,7 @@ export function App() {
       shouldRestoreSettingsButtonFocusRef.current = true;
       setIsSettingsOpen(false);
     } catch (error) {
-      setSettingsSaveError(error instanceof Error ? error.message : 'Unable to save settings.');
+      setSettingsSaveError(error instanceof Error ? error.message : '保存设置失败。');
     } finally {
       setIsSettingsSaving(false);
     }
@@ -370,10 +370,10 @@ export function App() {
       id: createMessageId(),
       role: 'system',
       content: activePendingConfirmation.kind === 'skill'
-        ? 'Cancelled the pending upload.'
+        ? '已取消待处理的上传操作。'
         : activePendingConfirmation.kind === 'agent'
-          ? 'Cancelled the pending execution plan.'
-          : 'Cancelled the pending Excel change.',
+          ? '已取消待执行的计划。'
+          : '已取消待处理的 Excel 操作。',
     });
   }
 
@@ -406,7 +406,7 @@ export function App() {
       appendThreadMessage(sessionId, {
         id: createMessageId(),
         role: 'assistant',
-        content: error instanceof Error ? error.message : 'Excel command failed.',
+        content: error instanceof Error ? error.message : 'Excel 命令执行失败。',
       });
     } finally {
       setCommandPending(sessionId, false);
@@ -439,7 +439,7 @@ export function App() {
       appendThreadMessage(sessionId, {
         id: createMessageId(),
         role: 'assistant',
-        content: error instanceof Error ? error.message : 'Skill execution failed.',
+        content: error instanceof Error ? error.message : 'Skill 执行失败。',
       });
     } finally {
       setCommandPending(sessionId, false);
@@ -480,7 +480,7 @@ export function App() {
       appendThreadMessage(sessionId, {
         id: createMessageId(),
         role: 'assistant',
-        content: error instanceof Error ? error.message : 'Agent execution failed.',
+        content: error instanceof Error ? error.message : 'Agent 执行失败。',
       });
     } finally {
       setCommandPending(sessionId, false);
@@ -552,7 +552,7 @@ export function App() {
             <button
               type="button"
               className="icon-button icon-button--ghost"
-              aria-label={isSessionsDrawerOpen ? 'Close sessions' : 'Open sessions'}
+              aria-label={isSessionsDrawerOpen ? '关闭会话列表' : '打开会话列表'}
               ref={sessionsButtonRef}
               onClick={toggleSessionsDrawer}
             >
@@ -561,8 +561,8 @@ export function App() {
 
             <div>
               <div className="eyebrow">Office Agent</div>
-              <h1 className="title">{activeSession?.title ?? 'Task pane shell'}</h1>
-              <div className="subtitle">{settings?.baseUrl ?? 'Settings not loaded yet'}</div>
+              <h1 className="title">{activeSession?.title ?? 'Office Agent 任务窗格'}</h1>
+              <div className="subtitle">{settings?.baseUrl ?? '设置尚未加载'}</div>
               <div className="status-line">{bridgeStatus}</div>
             </div>
           </div>
@@ -570,7 +570,7 @@ export function App() {
           <button
             type="button"
             className="icon-button icon-button--ghost"
-            aria-label="Open settings"
+            aria-label="打开设置"
             ref={settingsButtonRef}
             onClick={openSettings}
           >
@@ -592,6 +592,12 @@ export function App() {
               ) : null}
             </article>
           ))}
+          {isCommandPending ? (
+            <article className="message message--loading">
+              <div className="loading-spinner" />
+              <p>{'\u6B63\u5728\u601D\u8003\u2026'}</p>
+            </article>
+          ) : null}
         </section>
 
         <div className="composer-stack">
@@ -607,7 +613,7 @@ export function App() {
           <footer className="composer" aria-label="Message composer">
             <textarea
               aria-label="Message composer"
-              placeholder="Type a message..."
+              placeholder="输入消息..."
               rows={3}
               value={composerValue}
               disabled={isComposerDisabled}
@@ -620,7 +626,7 @@ export function App() {
               </section>
 
               <button type="button" className="send-button" disabled={isComposerDisabled} onClick={handleComposerSend}>
-                Send
+                发送
               </button>
             </div>
           </footer>
@@ -638,15 +644,15 @@ export function App() {
               <button
                 type="button"
                 className="icon-button icon-button--ghost"
-                aria-label="Close sessions"
+                aria-label="关闭会话列表"
                 onClick={closeSessionsDrawer}
               >
                 <MenuIcon />
               </button>
-              <div className="sidebar__title">Sessions</div>
+              <div className="sidebar__title">会话</div>
             </div>
             {sessions.length === 0 ? (
-              <div className="sidebar__empty">No sessions yet</div>
+              <div className="sidebar__empty">暂无会话</div>
             ) : (
               <div className="sidebar__list">
                 {sessions.map((session) => (
@@ -672,18 +678,18 @@ export function App() {
             className="settings-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Settings dialog"
+            aria-label="设置对话框"
             onKeyDown={handleSettingsDialogKeyDown}
           >
             <div className="settings-dialog__header">
               <div>
-                <div className="eyebrow">Configuration</div>
-                <h2 className="settings-dialog__title">Settings</h2>
+                <div className="eyebrow">配置</div>
+                <h2 className="settings-dialog__title">设置</h2>
               </div>
               <button
                 type="button"
                 className="icon-button icon-button--ghost"
-                aria-label="Close"
+                aria-label="关闭"
                 onClick={closeSettings}
                 disabled={isSettingsSaving}
               >
@@ -730,7 +736,7 @@ export function App() {
 
             <div className="settings-actions">
               <button type="button" className="ghost-button" onClick={closeSettings} disabled={isSettingsSaving}>
-                Cancel
+                取消
               </button>
               <button
                 type="button"
@@ -738,7 +744,7 @@ export function App() {
                 onClick={handleSettingsSave}
                 disabled={isSettingsLoading || isSettingsSaving || Boolean(settingsLoadError)}
               >
-                Save
+                保存
               </button>
             </div>
           </section>
@@ -762,7 +768,7 @@ function createInitialThreadMessages(session?: ChatSession): ThreadMessage[] {
     {
       id: 'welcome-message',
       role: 'assistant',
-      content: 'Welcome to Office Agent. Direct Excel commands are available while the full agent routing is still being wired.',
+      content: '欢迎使用 Office Agent。你可以直接使用 Excel 命令，完整的 Agent 路由功能正在接入中。',
     },
   ];
 }
@@ -827,7 +833,7 @@ function createAgentResultMessages(result: AgentResult): ThreadMessage[] {
 function createPlanPreview(result: AgentResult): ExcelCommandPreview {
   const plan = result.planner?.plan;
   return {
-    title: 'Execution plan',
+    title: '执行计划',
     summary: plan?.summary ?? result.message,
     details: plan?.steps.map(formatPlanStep) ?? [],
   };
@@ -849,15 +855,15 @@ function createTableFromUploadPreview(preview?: UploadPreview): ExcelTableData |
 function formatPlanStep(step: AgentPlan['steps'][number]) {
   switch (step.type) {
     case 'excel.addWorksheet':
-      return `Add worksheet ${String(step.args?.newSheetName ?? '').trim()}`.trim();
+      return `新增工作表 ${String(step.args?.newSheetName ?? '').trim()}`.trim();
     case 'excel.writeRange':
-      return `Write range ${String(step.args?.targetAddress ?? '').trim()}`.trim();
+      return `写入范围 ${String(step.args?.targetAddress ?? '').trim()}`.trim();
     case 'excel.renameWorksheet':
-      return `Rename worksheet ${String(step.args?.sheetName ?? '').trim()} to ${String(step.args?.newSheetName ?? '').trim()}`.trim();
+      return `重命名工作表 ${String(step.args?.sheetName ?? '').trim()} 为 ${String(step.args?.newSheetName ?? '').trim()}`.trim();
     case 'excel.deleteWorksheet':
-      return `Delete worksheet ${String(step.args?.sheetName ?? '').trim()}`.trim();
+      return `删除工作表 ${String(step.args?.sheetName ?? '').trim()}`.trim();
     case 'skill.upload_data':
-      return 'Upload selected data';
+      return '上传所选数据';
     default:
       return step.type;
   }
@@ -939,7 +945,7 @@ function createMessageId() {
 
 function formatSelectionCapsule(selectionContext: SelectionContext | null) {
   if (!selectionContext?.hasSelection || !selectionContext.sheetName || !selectionContext.address) {
-    return 'No selection';
+    return '未选中';
   }
 
   return `${selectionContext.sheetName} · ${selectionContext.address}`;

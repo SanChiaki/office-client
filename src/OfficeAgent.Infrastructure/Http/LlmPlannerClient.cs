@@ -24,7 +24,7 @@ namespace OfficeAgent.Infrastructure.Http
         {
             this.httpClient = httpClient ?? new HttpClient
             {
-                Timeout = TimeSpan.FromSeconds(30),
+                Timeout = TimeSpan.FromSeconds(120),
             };
             this.loadSettings = loadSettings ?? throw new ArgumentNullException(nameof(loadSettings));
         }
