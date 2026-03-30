@@ -40,6 +40,7 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
 
             await webView.EnsureCoreWebView2Async(environment);
             webView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
+            webView.CoreWebView2.ProcessFailed += CoreWebView2_ProcessFailed;
             isInitialized = true;
 
             var frontendFolder = ResolveFrontendFolder();
@@ -93,7 +94,8 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
             {
                 if (isProcessing)
                 {
-                    PostErrorResponse(rawJson, "busy", "Another request is already in progress. Please wait.");
+                    // Swallow any posting failure — the process might be in a bad state.
+                    TryPostErrorResponse(rawJson, "busy", "Another request is already in progress. Please wait.");
                     return;
                 }
 
@@ -104,15 +106,17 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                     // async chain keeps every continuation on the SynchronizationContext (UI thread)
                     // so COM calls in the orchestrator remain safe.
                     var responseJson = await messageRouter.RouteAsync(rawJson).ConfigureAwait(true);
-                    webView.CoreWebView2.PostWebMessageAsJson(responseJson);
+                    TryPostWebMessage(responseJson);
                 }
                 catch (Exception error)
                 {
+                    // An exception here means RouteAsync itself faulted (unusual path).
+                    // Use TryPostError so a secondary failure cannot escape async void.
                     var requestId = ExtractRequestId(rawJson);
                     var message = error is OperationCanceledException
                         ? "Agent request timed out."
                         : (error.Message ?? "Agent execution failed.");
-                    PostError(requestId, rawJson, "internal_error", message);
+                    TryPostError(requestId, rawJson, "internal_error", message);
                 }
                 finally
                 {
@@ -122,8 +126,16 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                 return;
             }
 
-            var syncResponse = messageRouter.Route(rawJson);
-            webView.CoreWebView2.PostWebMessageAsJson(syncResponse);
+            // Synchronous fast-path for non-LLM messages.
+            try
+            {
+                var syncResponse = messageRouter.Route(rawJson);
+                TryPostWebMessage(syncResponse);
+            }
+            catch (Exception error)
+            {
+                OfficeAgentLog.Error("bridge", "sync.failed", "Sync bridge message failed.", error);
+            }
         }
 
         public void PublishSelectionContext(SelectionContext selectionContext)
@@ -138,7 +150,24 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                 Type = BridgeMessageTypes.SelectionContextChanged,
                 Payload = selectionContext,
             });
-            webView.CoreWebView2.PostWebMessageAsJson(messageJson);
+
+            // Called from Application.SheetSelectionChange (a COM event handler).
+            // If the WebView2 renderer has crashed or is in a bad state, PostWebMessageAsJson
+            // can throw. Swallow the exception here to prevent it from propagating back to
+            // Excel's COM event dispatcher, which would crash the host process.
+            try
+            {
+                webView.CoreWebView2.PostWebMessageAsJson(messageJson);
+            }
+            catch (Exception error)
+            {
+                OfficeAgentLog.Warn("webview", "publish.failed", $"Failed to publish selection context: {error.Message}");
+            }
+        }
+
+        private static void CoreWebView2_ProcessFailed(object sender, CoreWebView2ProcessFailedEventArgs e)
+        {
+            OfficeAgentLog.Warn("webview", "process.failed", $"WebView2 process failed: {e.ProcessFailedKind}.");
         }
 
         private static bool IsLongRunningMessage(string rawJson)
@@ -169,21 +198,25 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
             }
         }
 
-        private void PostErrorResponse(string rawJson, string code, string message)
+        private void TryPostWebMessage(string json)
         {
-            var requestId = ExtractRequestId(rawJson);
-            var requestType = "bridge.unknown";
             try
             {
-                var obj = JsonConvert.DeserializeObject<WebMessageRequest>(rawJson);
-                if (obj != null) requestType = obj.Type ?? requestType;
+                webView.CoreWebView2?.PostWebMessageAsJson(json);
             }
-            catch { }
-
-            PostError(requestId, rawJson, code, message);
+            catch (Exception error)
+            {
+                OfficeAgentLog.Warn("webview", "post.failed", $"PostWebMessage failed: {error.Message}");
+            }
         }
 
-        private void PostError(string requestId, string rawJson, string code, string message)
+        private void TryPostErrorResponse(string rawJson, string code, string message)
+        {
+            var requestId = ExtractRequestId(rawJson);
+            TryPostError(requestId, rawJson, code, message);
+        }
+
+        private void TryPostError(string requestId, string rawJson, string code, string message)
         {
             var requestType = "bridge.unknown";
             try
@@ -204,14 +237,14 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                     Message = message,
                 },
             };
-            var errorJson = JsonConvert.SerializeObject(errorResponse, new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver() != null
-                ? new JsonSerializerSettings
-                {
-                    ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver(),
-                    NullValueHandling = NullValueHandling.Ignore,
-                }
-                : null);
-            webView.CoreWebView2.PostWebMessageAsJson(errorJson);
+
+            var errorJson = JsonConvert.SerializeObject(errorResponse, new JsonSerializerSettings
+            {
+                ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver(),
+                NullValueHandling = NullValueHandling.Ignore,
+            });
+
+            TryPostWebMessage(errorJson);
         }
 
         private static string BuildFallbackHtml()
