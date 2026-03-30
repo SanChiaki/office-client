@@ -57,6 +57,8 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
             hostControl?.PublishSelectionContext(selectionContext);
         }
 
+        internal bool IsVisible => taskPane?.Visible == true;
+
         private void EnsureCreated()
         {
             if (taskPane != null)

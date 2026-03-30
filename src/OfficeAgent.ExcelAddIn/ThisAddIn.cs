@@ -22,6 +22,9 @@ namespace OfficeAgent.ExcelAddIn
         internal IExcelContextService ExcelContextService { get; private set; }
         internal IExcelCommandExecutor ExcelCommandExecutor { get; private set; }
         internal IAgentOrchestrator AgentOrchestrator { get; private set; }
+        internal ExcelFocusCoordinator ExcelFocusCoordinator { get; private set; }
+
+        private bool isRestoringWorksheetFocus;
 
         private void ThisAddIn_Startup(object sender, EventArgs e)
         {
@@ -37,6 +40,7 @@ namespace OfficeAgent.ExcelAddIn
                 new DpapiSecretProtector());
             ExcelContextService = new ExcelSelectionContextService(Application);
             ExcelCommandExecutor = new ExcelInteropAdapter(Application, ExcelContextService);
+            ExcelFocusCoordinator = new ExcelFocusCoordinator(Application);
             var skillRegistry = new SkillRegistry(
                 new UploadDataSkill(ExcelCommandExecutor, new BusinessApiClient(SettingsStore)));
             AgentOrchestrator = new AgentOrchestrator(
@@ -67,6 +71,25 @@ namespace OfficeAgent.ExcelAddIn
         {
             OfficeAgentLog.Info("excel", "selection.changed", "Excel selection changed.");
             TaskPaneController?.PublishSelectionContext(ExcelContextService.GetCurrentSelectionContext());
+            RestoreWorksheetFocus(target);
+        }
+
+        private void RestoreWorksheetFocus(ExcelInterop.Range target)
+        {
+            if (isRestoringWorksheetFocus || TaskPaneController?.IsVisible != true || ExcelFocusCoordinator == null)
+            {
+                return;
+            }
+
+            try
+            {
+                isRestoringWorksheetFocus = true;
+                ExcelFocusCoordinator.RestoreWorksheetFocus(() => target?.Activate());
+            }
+            finally
+            {
+                isRestoringWorksheetFocus = false;
+            }
         }
     }
 }
