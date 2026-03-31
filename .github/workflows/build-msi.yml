@@ -1,0 +1,110 @@
+name: Build MSI
+
+on:
+  push:
+    branches: [codex/office-agent-vsto-mvp]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  Configuration: Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: src/OfficeAgent.Frontend/package-lock.json
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build frontend
+        run: |
+          cd src/OfficeAgent.Frontend
+          npm ci
+          npm run build
+
+      - name: Build VSTO add-in
+        run: >
+          msbuild src/OfficeAgent.ExcelAddIn/OfficeAgent.ExcelAddIn.csproj
+          /restore
+          /p:Configuration=${{ env.Configuration }}
+          /p:SignManifests=false
+
+      - name: Prepare installer payload
+        shell: pwsh
+        run: |
+          $addinOutput = "src/OfficeAgent.ExcelAddIn/bin/${{ env.Configuration }}"
+          $payloadDir = "artifacts/installer/payload"
+
+          if (Test-Path $payloadDir) { Remove-Item -Recurse -Force $payloadDir }
+          New-Item -ItemType Directory -Path $payloadDir -Force | Out-Null
+
+          Copy-Item -Recurse -Force "$addinOutput/*" $payloadDir
+
+          $frontendPayload = "$payloadDir/frontend"
+          New-Item -ItemType Directory -Path $frontendPayload -Force | Out-Null
+          Copy-Item -Recurse -Force "src/OfficeAgent.Frontend/dist/*" $frontendPayload
+
+      - name: Restore WiX tool
+        run: dotnet tool restore
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $commitCount = [int](git rev-list --count HEAD).Trim()
+          $productVersion = "1.0.$commitCount"
+          Write-Host "Building MSI version $productVersion..."
+
+          $outputDir = "artifacts/installer"
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+
+          $payloadDir = (Resolve-Path "artifacts/installer/payload").Path
+          $wixSource = "installer/OfficeAgent.Setup/Product.wxs"
+
+          foreach ($arch in @("x86", "x64")) {
+            $msiPath = Join-Path $outputDir "OfficeAgent.Setup-$arch.msi"
+            if (Test-Path $msiPath) { Remove-Item -Force $msiPath }
+            Write-Host "Building $arch MSI..."
+            dotnet wix build $wixSource `
+              -arch $arch `
+              -d "PublishRoot=$payloadDir" `
+              -d "ProductVersion=$productVersion" `
+              -o $msiPath
+            if ($LASTEXITCODE -ne 0) {
+              throw "WiX build failed for $arch"
+            }
+          }
+
+          Write-Host "MSI artifacts:"
+          Get-ChildItem "$outputDir/*.msi" | ForEach-Object { Write-Host "  $($_.FullName)" }
+
+      - name: Upload MSI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OfficeAgent-MSI-${{ github.sha }}
+          path: artifacts/installer/*.msi
+          retention-days: 30
