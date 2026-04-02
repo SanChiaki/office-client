@@ -2,6 +2,7 @@ using System;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Authentication;
 using System.Text;
 using Newtonsoft.Json;
 using OfficeAgent.Core.Diagnostics;
@@ -36,17 +37,24 @@ namespace OfficeAgent.Infrastructure.Http
             else if (cookieContainer != null)
             {
                 this.httpClient = new HttpClient(new HttpClientHandler
+                    {
+                        CookieContainer = cookieContainer,
+                        UseCookies = true,
+                        SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    })
+                    {
+                        Timeout = TimeSpan.FromSeconds(15),
+                    };
+            }
+            else
+            {
+                this.httpClient = new HttpClient(new HttpClientHandler
                 {
-                    CookieContainer = cookieContainer,
-                    UseCookies = true,
+                    SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                 })
                 {
                     Timeout = TimeSpan.FromSeconds(15),
                 };
-            }
-            else
-            {
-                this.httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
             }
         }
 

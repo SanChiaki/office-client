@@ -146,6 +146,17 @@ namespace OfficeAgent.Core.Orchestration
                         return CreatePlannerFailure($"The read step type '{plannerResponse.Step?.Type}' is not supported or not configured.");
                     }
 
+                    if (string.Equals(observation.Kind, "fetch.error", StringComparison.Ordinal))
+                    {
+                        return new AgentCommandResult
+                        {
+                            Route = AgentRouteTypes.Chat,
+                            Status = "failed",
+                            RequiresConfirmation = false,
+                            Message = observation.Message,
+                        };
+                    }
+
                     request.Observations = request.Observations
                         .Concat(new[] { observation })
                         .ToArray();
@@ -214,6 +225,17 @@ namespace OfficeAgent.Core.Orchestration
                     if (observation == null)
                     {
                         return CreatePlannerFailure($"The read step type '{plannerResponse.Step?.Type}' is not supported or not configured.");
+                    }
+
+                    if (string.Equals(observation.Kind, "fetch.error", StringComparison.Ordinal))
+                    {
+                        return new AgentCommandResult
+                        {
+                            Route = AgentRouteTypes.Chat,
+                            Status = "failed",
+                            RequiresConfirmation = false,
+                            Message = observation.Message,
+                        };
                     }
 
                     request.Observations = request.Observations
@@ -368,7 +390,7 @@ namespace OfficeAgent.Core.Orchestration
                 return new PlannerObservation
                 {
                     Kind = "fetch.error",
-                    Message = $"Failed to fetch {url}: {fetchResult.ErrorMessage}",
+                    Message = fetchResult.ErrorMessage,
                 };
             }
 
@@ -412,7 +434,7 @@ namespace OfficeAgent.Core.Orchestration
                 return new PlannerObservation
                 {
                     Kind = "fetch.error",
-                    Message = $"Failed to fetch {url}: {fetchResult.ErrorMessage}",
+                    Message = fetchResult.ErrorMessage,
                 };
             }
 

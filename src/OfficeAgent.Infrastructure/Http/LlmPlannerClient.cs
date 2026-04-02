@@ -1,6 +1,7 @@
 using System;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Authentication;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -23,7 +24,10 @@ namespace OfficeAgent.Infrastructure.Http
 
         public LlmPlannerClient(HttpClient httpClient, Func<AppSettings> loadSettings)
         {
-            this.httpClient = httpClient ?? new HttpClient
+            this.httpClient = httpClient ?? new HttpClient(new HttpClientHandler
+            {
+                SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+            })
             {
                 Timeout = TimeSpan.FromSeconds(120),
             };

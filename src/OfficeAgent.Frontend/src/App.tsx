@@ -645,7 +645,7 @@ export function App() {
       appendThreadMessage(sessionId, {
         id: createMessageId(),
         role: 'assistant',
-        content: error instanceof Error ? error.message : 'Excel 命令执行失败。',
+        content: `请求失败：${error instanceof Error ? error.message : 'Excel 命令执行失败。'}`,
       });
     } finally {
       setCommandPending(sessionId, false);
@@ -678,7 +678,7 @@ export function App() {
       appendThreadMessage(sessionId, {
         id: createMessageId(),
         role: 'assistant',
-        content: error instanceof Error ? error.message : 'Skill 执行失败。',
+        content: `请求失败：${error instanceof Error ? error.message : 'Skill 执行失败。'}`,
       });
     } finally {
       setCommandPending(sessionId, false);
@@ -721,7 +721,7 @@ export function App() {
       appendThreadMessage(sessionId, {
         id: createMessageId(),
         role: 'assistant',
-        content: error instanceof Error ? error.message : 'Agent 执行失败。',
+        content: `请求失败：${error instanceof Error ? error.message : 'Agent 执行失败。'}`,
       });
     } finally {
       setCommandPending(sessionId, false);
@@ -1106,7 +1106,7 @@ function extractConversationHistory(messages: ThreadMessage[]): ConversationTurn
 
 function threadToChatMessages(messages: ThreadMessage[]): Array<{ id: string; role: string; content: string; createdAtUtc: string }> {
   return messages
-    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.id !== 'welcome-message')
     .map((m) => ({
       id: m.id,
       role: m.role,
@@ -1129,7 +1129,7 @@ function createInitialThreadMessages(session?: ChatSession): ThreadMessage[] {
     {
       id: 'welcome-message',
       role: 'assistant',
-      content: '欢迎使用 Resy AI。你可以直接使用 Excel 命令，完整的 Agent 路由功能正在接入中。',
+      content: '欢迎使用Resy AI，我是能和Excel交互的Agent。你选中的单元格会被我优先识别，尽情尝试吧~',
     },
   ];
 }

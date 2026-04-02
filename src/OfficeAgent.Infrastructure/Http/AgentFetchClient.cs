@@ -2,6 +2,7 @@ using System;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Authentication;
 using System.Threading.Tasks;
 using OfficeAgent.Core.Diagnostics;
 using OfficeAgent.Core.Models;
@@ -28,6 +29,7 @@ namespace OfficeAgent.Infrastructure.Http
                 {
                     CookieContainer = cookieContainer,
                     UseCookies = true,
+                    SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                 })
                 {
                     Timeout = TimeSpan.FromSeconds(15),
@@ -35,7 +37,13 @@ namespace OfficeAgent.Infrastructure.Http
             }
             else
             {
-                this.httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                this.httpClient = new HttpClient(new HttpClientHandler
+                {
+                    SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                })
+                {
+                    Timeout = TimeSpan.FromSeconds(15),
+                };
             }
         }
 
@@ -86,7 +94,7 @@ namespace OfficeAgent.Infrastructure.Http
                                 Success = false,
                                 StatusCode = (int)response.StatusCode,
                                 Body = body,
-                                ErrorMessage = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}",
+                                ErrorMessage = $"请求失败：HTTP {(int)response.StatusCode} {response.ReasonPhrase}",
                             };
                         }
 
@@ -105,7 +113,7 @@ namespace OfficeAgent.Infrastructure.Http
                 return new FetchResult
                 {
                     Success = false,
-                    ErrorMessage = $"Request timed out after {httpClient.Timeout.TotalSeconds:0} seconds.",
+                    ErrorMessage = $"请求失败：请求超时（{httpClient.Timeout.TotalSeconds:0}秒）",
                 };
             }
             catch (HttpRequestException error)
@@ -114,7 +122,7 @@ namespace OfficeAgent.Infrastructure.Http
                 return new FetchResult
                 {
                     Success = false,
-                    ErrorMessage = $"Request failed: {error.Message}",
+                    ErrorMessage = $"请求失败：{error.Message}",
                 };
             }
         }
