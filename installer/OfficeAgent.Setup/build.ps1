@@ -57,6 +57,15 @@ function Build-MsiForArchitecture {
     return $msiPath
 }
 
+Write-Host "Installing frontend dependencies..."
+Push-Location $frontendRoot
+try {
+    Invoke-NativeCommand "npm.cmd" "install"
+}
+finally {
+    Pop-Location
+}
+
 Write-Host "Building frontend..."
 Push-Location $frontendRoot
 try {
