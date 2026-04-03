@@ -23,7 +23,7 @@
     <VSToolsPath Condition="'$(VSToolsPath)' == '' and Exists('$(ProgramFiles)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)')">$(ProgramFiles)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
     <LangVersion>latest</LangVersion>
     <SignManifests>true</SignManifests>
-    <ManifestCertificateThumbprint>F8C5873ED3D744330E5E20F2E3DC275C09D97EB1</ManifestCertificateThumbprint>
+    <ManifestCertificateThumbprint />
   </PropertyGroup>
 
   <ItemGroup>

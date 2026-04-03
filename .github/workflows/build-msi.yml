@@ -2,7 +2,7 @@ name: Build MSI
 
 on:
   push:
-    branches: [codex/office-agent-vsto-mvp]
+    branches: [main]
     paths-ignore:
       - 'docs/**'
       - '*.md'
@@ -39,88 +39,10 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Build frontend
-        run: |
-          cd src/OfficeAgent.Frontend
-          npm ci
-          npm run build
-
-      - name: Generate test signing certificate
+      - name: Build installer
         shell: pwsh
         run: |
-          $cert = New-SelfSignedCertificate `
-            -Type CodeSigningCert `
-            -Subject "CN=OfficeAgent CI Test" `
-            -CertStoreLocation "Cert:\CurrentUser\My"
-          $thumbprint = $cert.Thumbprint
-          Write-Host "Generated cert thumbprint: $thumbprint"
-          echo "SIGNING_THUMBPRINT=$thumbprint" >> $env:GITHUB_ENV
-
-      - name: Build VSTO add-in
-        run: >
-          msbuild src/OfficeAgent.ExcelAddIn/OfficeAgent.ExcelAddIn.csproj
-          /restore
-          /p:Configuration=${{ env.Configuration }}
-          /p:SignManifests=true
-          /p:ManifestCertificateThumbprint=${{ env.SIGNING_THUMBPRINT }}
-
-      - name: Remove test certificate
-        if: always()
-        shell: pwsh
-        run: |
-          if ($env:SIGNING_THUMBPRINT) {
-            Remove-Item "Cert:\CurrentUser\My\$env:SIGNING_THUMBPRINT" -ErrorAction SilentlyContinue
-          }
-
-      - name: Prepare installer payload
-        shell: pwsh
-        run: |
-          $addinOutput = "src/OfficeAgent.ExcelAddIn/bin/${{ env.Configuration }}"
-          $payloadDir = "artifacts/installer/payload"
-
-          if (Test-Path $payloadDir) { Remove-Item -Recurse -Force $payloadDir }
-          New-Item -ItemType Directory -Path $payloadDir -Force | Out-Null
-
-          Copy-Item -Recurse -Force "$addinOutput/*" $payloadDir
-
-          $frontendPayload = "$payloadDir/frontend"
-          New-Item -ItemType Directory -Path $frontendPayload -Force | Out-Null
-          Copy-Item -Recurse -Force "src/OfficeAgent.Frontend/dist/*" $frontendPayload
-
-      - name: Restore WiX tool
-        run: dotnet tool restore
-
-      - name: Build MSI
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          $commitCount = [int](git rev-list --count HEAD).Trim()
-          $productVersion = "1.0.$commitCount"
-          Write-Host "Building MSI version $productVersion..."
-
-          $outputDir = "artifacts/installer"
-          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
-
-          $payloadDir = (Resolve-Path "artifacts/installer/payload").Path
-          $wixSource = "installer/OfficeAgent.Setup/Product.wxs"
-
-          foreach ($arch in @("x86", "x64")) {
-            $msiPath = Join-Path $outputDir "OfficeAgent.Setup-$arch.msi"
-            if (Test-Path $msiPath) { Remove-Item -Force $msiPath }
-            Write-Host "Building $arch MSI..."
-            dotnet wix build $wixSource `
-              -arch $arch `
-              -d "PublishRoot=$payloadDir" `
-              -d "ProductVersion=$productVersion" `
-              -o $msiPath
-            if ($LASTEXITCODE -ne 0) {
-              throw "WiX build failed for $arch"
-            }
-          }
-
-          Write-Host "MSI artifacts:"
-          Get-ChildItem "$outputDir/*.msi" | ForEach-Object { Write-Host "  $($_.FullName)" }
+          powershell -ExecutionPolicy Bypass -File "installer/OfficeAgent.Setup/build.ps1"
 
       - name: Upload MSI artifacts
         uses: actions/upload-artifact@v4
