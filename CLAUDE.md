@@ -26,7 +26,9 @@ The VSTO worktree pushes via `git push office-agent codex/office-agent-vsto-mvp`
 ```
 Excel Process
   └── VSTO Add-in (ThisAddIn)
-       ├── AgentRibbon (Ribbon button → toggle task pane)
+       ├── AgentRibbon (Ribbon with two groups)
+       │    ├── Group "Resy AI" — Open/Close task pane button
+       │    └── Group "账号" — SSO login button
        └── TaskPaneController
             └── CustomTaskPane (420px, docked right)
                  └── TaskPaneHostControl (WinForms UserControl)
@@ -42,9 +44,11 @@ Excel Process
 | Core | `OfficeAgent.Core` | Domain models, AgentOrchestrator, SkillRegistry, ConfirmationService, PlanExecutor |
 | Infrastructure | `OfficeAgent.Infrastructure` | Excel Interop adapter, HTTP clients (LLM, Business API), file storage, DPAPI encryption |
 
-**WebView2 JS/.NET Bridge:** Frontend calls `window.chrome.webview.postMessage(json)`, routed by `WebMessageRouter` to the appropriate handler. Responses come back via `CoreWebView2.PostWebMessageAsJson`. All bridge messages use the `bridge.*` namespace (e.g., `bridge.runAgent`, `bridge.executeExcelCommand`, `bridge.getSelectionContext`, `bridge.saveSessions`).
+**WebView2 JS/.NET Bridge:** Frontend calls `window.chrome.webview.postMessage(json)`, routed by `WebMessageRouter` to the appropriate handler. Responses come back via `CoreWebView2.PostWebMessageAsJson`. All bridge messages use the `bridge.*` namespace (e.g., `bridge.runAgent`, `bridge.executeExcelCommand`, `bridge.getSelectionContext`, `bridge.saveSessions`, `bridge.login`, `bridge.logout`, `bridge.getLoginStatus`).
 
 **Agent dispatch modes:** Auto (detect route from input), Skill (direct to named skill), Agent (LLM planner for multi-step plans with user confirmation).
+
+**SSO login:** Users configure an SSO URL and an optional login success path (登录成功路径) in settings. Clicking "登录" in the task pane opens a WebView2 popup (`SsoLoginPopup`) to the SSO page. Login success is detected through two parallel channels: (1) `WebResourceResponseReceived` fires when a page fetch/XHR request matching the success path returns HTTP 200; (2) `NavigationCompleted` fires when the page navigates to a URL whose path contains the success path marker. Once detected, the popup captures cookies via `CookieManager.GetCookiesAsync`, stores them in a shared `CookieContainer`, and persists them via `FileCookieStore` (DPAPI-encrypted). A manual "已登录" button at the bottom of the popup also serves as a fallback. `BusinessApiClient` uses the same `CookieContainer` to send cookies with business API requests. The popup initializes WebView2 via `InitializeAsync()` before `ShowDialog()` to avoid async void continuation issues in modal dialogs.
 
 **Conversation history:** The agent sends multi-turn conversation history to the LLM. The frontend extracts the last 10 turns (20 messages) from `sessionThreads` and passes them as `ConversationTurn[]` via `bridge.runAgent`. The backend inserts history between the system prompt and current user message in the OpenAI-compatible chat completions API. History flows: `AgentCommandEnvelope.ConversationHistory` → `PlannerRequest.ConversationHistory` → `LlmPlannerClient.BuildChatMessages`. Only `user` and `assistant` role messages are included; assistant content is plain text (`AssistantMessage`), not full structured JSON.
 
@@ -106,6 +110,21 @@ npm run dev         # HTTPS dev server on localhost:3000
 ## Environment Configuration
 
 The root `.env` file configures: `API_KEY`, `BASE_URL`, `MODEL` (used by the LLM planner).
+
+## Mock Server (Testing)
+
+A standalone mock SSO + Business API server lives in `tests/mock-server/`:
+
+```bash
+cd tests/mock-server && npm install && node server.js
+```
+
+| Service | Port | Endpoints |
+|---|---|---|
+| SSO Login | 3100 | `GET /login` (form page); `POST /rest/login` (returns 200 + Set-Cookie) |
+| Business API | 3200 | `GET /api/performance`, `GET /api/performance/:name`, `POST /api/performance`, `POST /upload_data`, `GET /api/download/:projectName` |
+
+Configure the add-in: SSO URL = `http://localhost:3100/login`, 登录成功路径 = `/rest/login`, Base URL = `http://localhost:3200`, API Key = leave empty (uses SSO cookies).
 
 ## Logging
 
