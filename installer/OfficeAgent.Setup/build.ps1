@@ -7,13 +7,37 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+
+function Select-MsBuildExe {
+    $editions = @("Enterprise", "Professional", "Community", "BuildTools", "TestAgent")
+    foreach ($edition in $editions) {
+        $path = "C:\Program Files\Microsoft Visual Studio\2022\$edition\MSBuild\Current\Bin\MSBuild.exe"
+        if (Test-Path $path) { return $path }
+        $x86Path = "C:\Program Files (x86)\Microsoft Visual Studio\2022\$edition\MSBuild\Current\Bin\MSBuild.exe"
+        if (Test-Path $x86Path) { return $x86Path }
+    }
+    # Fallback: try to find MSBuild.exe via vswhere
+    $vswherePath = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vswherePath) {
+        $installPath = & $vswherePath -latest -property installationPath -products * 2>$null
+        if ($installPath) {
+            $msbuild = Join-Path $installPath "MSBuild\Current\Bin\MSBuild.exe"
+            if (Test-Path $msbuild) { return $msbuild }
+        }
+    }
+    # Final fallback: use .NET Framework MSBuild
+    $dotnetMsbuild = Join-Path $env:SystemRoot "Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe"
+    if (Test-Path $dotnetMsbuild) { return $dotnetMsbuild }
+    throw "Could not find MSBuild. Please ensure Visual Studio is installed."
+}
+
 $frontendRoot = Join-Path $repoRoot "src\\OfficeAgent.Frontend"
 $addinProject = Join-Path $repoRoot "src\\OfficeAgent.ExcelAddIn\\OfficeAgent.ExcelAddIn.csproj"
 $addinOutputRoot = Join-Path $repoRoot "src\\OfficeAgent.ExcelAddIn\\bin\\$Configuration"
 $payloadRoot = Join-Path $repoRoot "artifacts\\installer\\payload"
 $outputRoot = Join-Path $repoRoot "artifacts\\installer"
 $wixSource = Join-Path $PSScriptRoot "Product.wxs"
-$msbuild = "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe"
+$msbuild = Select-MsBuildExe
 
 function Invoke-NativeCommand {
     param(
@@ -57,6 +81,7 @@ function Build-MsiForArchitecture {
     return $msiPath
 }
 
+Write-Host "Using MSBuild: $msbuild"
 Write-Host "Installing frontend dependencies..."
 Push-Location $frontendRoot
 try {
