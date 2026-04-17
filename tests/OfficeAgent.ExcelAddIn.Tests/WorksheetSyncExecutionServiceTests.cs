@@ -464,6 +464,85 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
+        public void ExecuteFullUploadSplitsBatchReadsAcrossNonContiguousManagedColumns()
+        {
+            var connector = new FakeSystemConnector();
+            var metadataStore = new FakeWorksheetMetadataStore();
+            var binding = new SheetBinding
+            {
+                SheetName = "Sheet1",
+                SystemKey = "current-business-system",
+                ProjectId = "performance",
+                ProjectName = "绩效项目",
+                HeaderStartRow = 3,
+                HeaderRowCount = 2,
+                DataStartRow = 6,
+            };
+            metadataStore.Bindings["Sheet1"] = binding;
+            metadataStore.FieldMappings["Sheet1"] = BuildDefaultMappings("Sheet1");
+
+            var (service, grid) = CreateService(connector, metadataStore, new FakeWorksheetSelectionReader());
+            grid.SetCell("Sheet1", 3, 1, "ID");
+            grid.SetCell("Sheet1", 3, 2, "项目负责人");
+            grid.SetCell("Sheet1", 3, 3, "用户备注");
+            grid.SetCell("Sheet1", 3, 4, "测试活动111");
+            grid.SetCell("Sheet1", 4, 4, "开始时间");
+            grid.SetCell("Sheet1", 4, 5, "结束时间");
+            grid.SetRawCell("Sheet1", 6, 1, "row-1");
+            grid.SetRawCell("Sheet1", 6, 2, "李四");
+            grid.SetRawCell("Sheet1", 6, 3, "保留备注");
+            grid.SetRawCell("Sheet1", 6, 4, 1234d, "General", "001234");
+            grid.SetRawCell("Sheet1", 6, 5, 56.75d, "General", "56.75-显示");
+
+            var plan = InvokePrepare(service, "PrepareFullUpload", "Sheet1");
+            InvokeExecute(service, "ExecuteUpload", plan);
+
+            Assert.Collection(
+                grid.ReadRangeCalls,
+                call =>
+                {
+                    Assert.Equal("ReadRangeValues", call.MethodName);
+                    Assert.Equal("Sheet1", call.SheetName);
+                    Assert.Equal(6, call.StartRow);
+                    Assert.Equal(6, call.EndRow);
+                    Assert.Equal(1, call.StartColumn);
+                    Assert.Equal(2, call.EndColumn);
+                },
+                call =>
+                {
+                    Assert.Equal("ReadRangeNumberFormats", call.MethodName);
+                    Assert.Equal("Sheet1", call.SheetName);
+                    Assert.Equal(6, call.StartRow);
+                    Assert.Equal(6, call.EndRow);
+                    Assert.Equal(1, call.StartColumn);
+                    Assert.Equal(2, call.EndColumn);
+                },
+                call =>
+                {
+                    Assert.Equal("ReadRangeValues", call.MethodName);
+                    Assert.Equal("Sheet1", call.SheetName);
+                    Assert.Equal(6, call.StartRow);
+                    Assert.Equal(6, call.EndRow);
+                    Assert.Equal(4, call.StartColumn);
+                    Assert.Equal(5, call.EndColumn);
+                },
+                call =>
+                {
+                    Assert.Equal("ReadRangeNumberFormats", call.MethodName);
+                    Assert.Equal("Sheet1", call.SheetName);
+                    Assert.Equal(6, call.StartRow);
+                    Assert.Equal(6, call.EndRow);
+                    Assert.Equal(4, call.StartColumn);
+                    Assert.Equal(5, call.EndColumn);
+                });
+            Assert.DoesNotContain(grid.ReadRangeCalls, call => call.StartColumn <= 3 && call.EndColumn >= 3);
+            Assert.Equal(0, grid.CountGetCellTextCalls("Sheet1", 6, 3));
+            Assert.Contains(connector.LastBatchSaveChanges, change => change.RowId == "row-1" && change.ApiFieldKey == "owner_name" && change.NewValue == "李四");
+            Assert.Contains(connector.LastBatchSaveChanges, change => change.RowId == "row-1" && change.ApiFieldKey == "start_12345678" && change.NewValue == "1234");
+            Assert.Contains(connector.LastBatchSaveChanges, change => change.RowId == "row-1" && change.ApiFieldKey == "end_12345678" && change.NewValue == "56.75");
+        }
+
+        [Fact]
         public void ExecuteFullUploadFallsBackToCellTextForUnsafeFormattedCells()
         {
             var connector = new FakeSystemConnector();

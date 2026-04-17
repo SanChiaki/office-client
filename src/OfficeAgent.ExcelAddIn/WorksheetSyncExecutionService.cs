@@ -537,28 +537,19 @@ namespace OfficeAgent.ExcelAddIn
                 return Array.Empty<CellChange>();
             }
 
-            var startColumn = columns.Min(column => column.ColumnIndex);
-            var endColumn = columns.Max(column => column.ColumnIndex);
-            var values = gridAdapter.ReadRangeValues(sheetName, binding.DataStartRow, lastUsedRow, startColumn, endColumn);
-            var numberFormats = gridAdapter.ReadRangeNumberFormats(sheetName, binding.DataStartRow, lastUsedRow, startColumn, endColumn);
+            var segments = ReadUploadSegments(sheetName, binding.DataStartRow, lastUsedRow, columns);
+            var nonIdColumns = columns.Where(column => !column.IsIdColumn).ToArray();
 
             for (var row = binding.DataStartRow; row <= lastUsedRow; row++)
             {
                 var rowOffset = row - binding.DataStartRow;
-                var rowId = ReadUploadCellValue(
-                    sheetName,
-                    row,
-                    idColumn.ColumnIndex,
-                    rowOffset,
-                    idColumn.ColumnIndex - startColumn,
-                    values,
-                    numberFormats);
+                var rowId = ReadUploadCellValue(sheetName, row, idColumn.ColumnIndex, rowOffset, segments);
                 if (string.IsNullOrWhiteSpace(rowId))
                 {
                     continue;
                 }
 
-                foreach (var column in schema.Columns.Where(item => !item.IsIdColumn))
+                foreach (var column in nonIdColumns)
                 {
                     result.Add(new CellChange
                     {
@@ -566,19 +557,39 @@ namespace OfficeAgent.ExcelAddIn
                         RowId = rowId,
                         ApiFieldKey = column.ApiFieldKey,
                         OldValue = string.Empty,
-                        NewValue = ReadUploadCellValue(
-                            sheetName,
-                            row,
-                            column.ColumnIndex,
-                            rowOffset,
-                            column.ColumnIndex - startColumn,
-                            values,
-                            numberFormats),
+                        NewValue = ReadUploadCellValue(sheetName, row, column.ColumnIndex, rowOffset, segments),
                     });
                 }
             }
 
             return result.ToArray();
+        }
+
+        private WorksheetUploadReadSegment[] ReadUploadSegments(
+            string sheetName,
+            int startRow,
+            int endRow,
+            IReadOnlyList<WorksheetColumnBinding> columns)
+        {
+            var segmentColumns = (columns ?? Array.Empty<WorksheetColumnBinding>())
+                .Where(column => column != null)
+                .Select(column => new WorksheetRuntimeColumn
+                {
+                    ColumnIndex = column.ColumnIndex,
+                    ApiFieldKey = column.ApiFieldKey,
+                    IsIdColumn = column.IsIdColumn,
+                })
+                .ToArray();
+
+            return segmentBuilder.Build(segmentColumns)
+                .Select(segment => new WorksheetUploadReadSegment
+                {
+                    StartColumn = segment.StartColumn,
+                    EndColumn = segment.EndColumn,
+                    Values = gridAdapter.ReadRangeValues(sheetName, startRow, endRow, segment.StartColumn, segment.EndColumn),
+                    NumberFormats = gridAdapter.ReadRangeNumberFormats(sheetName, startRow, endRow, segment.StartColumn, segment.EndColumn),
+                })
+                .ToArray();
         }
 
         private CellChange[] ReadSelectionChanges(
@@ -701,10 +712,18 @@ namespace OfficeAgent.ExcelAddIn
             int row,
             int column,
             int rowOffset,
-            int columnOffset,
-            object[,] values,
-            string[,] numberFormats)
+            IReadOnlyList<WorksheetUploadReadSegment> segments)
         {
+            var segment = (segments ?? Array.Empty<WorksheetUploadReadSegment>())
+                .FirstOrDefault(item => item != null && column >= item.StartColumn && column <= item.EndColumn);
+            if (segment == null)
+            {
+                return gridAdapter.GetCellText(sheetName, row, column);
+            }
+
+            var columnOffset = column - segment.StartColumn;
+            var values = segment.Values;
+            var numberFormats = segment.NumberFormats;
             var value = GetRangeValue(values, rowOffset, columnOffset);
             var numberFormat = GetRangeValue(numberFormats, rowOffset, columnOffset);
             if (uploadValueNormalizer.TryNormalize(value, numberFormat, out var normalized))
@@ -836,5 +855,13 @@ namespace OfficeAgent.ExcelAddIn
         public WorksheetRuntimeColumn[] RuntimeColumns { get; set; } = Array.Empty<WorksheetRuntimeColumn>();
         public WorksheetSchema Schema { get; set; }
         public bool UsesExistingLayout { get; set; }
+    }
+
+    internal sealed class WorksheetUploadReadSegment
+    {
+        public int StartColumn { get; set; }
+        public int EndColumn { get; set; }
+        public object[,] Values { get; set; }
+        public string[,] NumberFormats { get; set; }
     }
 }
