@@ -329,6 +329,106 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
+        public void ExecuteFullUploadUsesBatchReadForManagedRegion()
+        {
+            var connector = new FakeSystemConnector();
+            var metadataStore = new FakeWorksheetMetadataStore();
+            var binding = new SheetBinding
+            {
+                SheetName = "Sheet1",
+                SystemKey = "current-business-system",
+                ProjectId = "performance",
+                ProjectName = "绩效项目",
+                HeaderStartRow = 3,
+                HeaderRowCount = 2,
+                DataStartRow = 6,
+            };
+            metadataStore.Bindings["Sheet1"] = binding;
+            metadataStore.FieldMappings["Sheet1"] = BuildDefaultMappings("Sheet1");
+
+            var (service, grid) = CreateService(connector, metadataStore, new FakeWorksheetSelectionReader());
+            SeedRecognizedHeaders(grid, "Sheet1", binding);
+            grid.SetRawCell("Sheet1", 6, 1, "row-1");
+            grid.SetRawCell("Sheet1", 6, 2, "李四");
+            grid.SetRawCell("Sheet1", 6, 3, 1234d, "General", "001234");
+            grid.SetRawCell("Sheet1", 6, 4, 56.75d, "General", "56.75-显示");
+            grid.SetRawCell("Sheet1", 7, 1, string.Empty);
+            grid.SetRawCell("Sheet1", 7, 2, "无ID");
+            grid.SetRawCell("Sheet1", 7, 3, 999d, "General", "999");
+            grid.SetRawCell("Sheet1", 7, 4, 1000d, "General", "1000");
+
+            var plan = InvokePrepare(service, "PrepareFullUpload", "Sheet1");
+            InvokeExecute(service, "ExecuteUpload", plan);
+
+            Assert.Collection(
+                grid.ReadRangeCalls,
+                call =>
+                {
+                    Assert.Equal("ReadRangeValues", call.MethodName);
+                    Assert.Equal("Sheet1", call.SheetName);
+                    Assert.Equal(6, call.StartRow);
+                    Assert.Equal(7, call.EndRow);
+                    Assert.Equal(1, call.StartColumn);
+                    Assert.Equal(4, call.EndColumn);
+                },
+                call =>
+                {
+                    Assert.Equal("ReadRangeNumberFormats", call.MethodName);
+                    Assert.Equal("Sheet1", call.SheetName);
+                    Assert.Equal(6, call.StartRow);
+                    Assert.Equal(7, call.EndRow);
+                    Assert.Equal(1, call.StartColumn);
+                    Assert.Equal(4, call.EndColumn);
+                });
+            Assert.Equal(0, grid.CountGetCellTextCalls("Sheet1", 6, 1));
+            Assert.Equal(0, grid.CountGetCellTextCalls("Sheet1", 6, 2));
+            Assert.Equal(0, grid.CountGetCellTextCalls("Sheet1", 6, 3));
+            Assert.Equal(0, grid.CountGetCellTextCalls("Sheet1", 6, 4));
+            Assert.Contains(connector.LastBatchSaveChanges, change => change.RowId == "row-1" && change.ApiFieldKey == "start_12345678" && change.NewValue == "1234");
+            Assert.Contains(connector.LastBatchSaveChanges, change => change.RowId == "row-1" && change.ApiFieldKey == "end_12345678" && change.NewValue == "56.75");
+        }
+
+        [Fact]
+        public void ExecuteFullUploadFallsBackToCellTextForUnsafeFormattedCells()
+        {
+            var connector = new FakeSystemConnector();
+            var metadataStore = new FakeWorksheetMetadataStore();
+            var binding = new SheetBinding
+            {
+                SheetName = "Sheet1",
+                SystemKey = "current-business-system",
+                ProjectId = "performance",
+                ProjectName = "绩效项目",
+                HeaderStartRow = 3,
+                HeaderRowCount = 2,
+                DataStartRow = 6,
+            };
+            metadataStore.Bindings["Sheet1"] = binding;
+            metadataStore.FieldMappings["Sheet1"] = BuildDefaultMappings("Sheet1");
+
+            var (service, grid) = CreateService(connector, metadataStore, new FakeWorksheetSelectionReader());
+            SeedRecognizedHeaders(grid, "Sheet1", binding);
+            grid.SetRawCell("Sheet1", 6, 1, "row-1");
+            grid.SetRawCell("Sheet1", 6, 2, "李四");
+            grid.SetRawCell("Sheet1", 6, 3, 45734d, "yyyy-mm-dd", "2025-03-18");
+            grid.SetRawCell("Sheet1", 6, 4, 0.25d, "0%", "25%");
+
+            var plan = InvokePrepare(service, "PrepareFullUpload", "Sheet1");
+            InvokeExecute(service, "ExecuteUpload", plan);
+
+            Assert.Collection(
+                grid.ReadRangeCalls,
+                call => Assert.Equal("ReadRangeValues", call.MethodName),
+                call => Assert.Equal("ReadRangeNumberFormats", call.MethodName));
+            Assert.Equal(0, grid.CountGetCellTextCalls("Sheet1", 6, 1));
+            Assert.Equal(0, grid.CountGetCellTextCalls("Sheet1", 6, 2));
+            Assert.Equal(1, grid.CountGetCellTextCalls("Sheet1", 6, 3));
+            Assert.Equal(1, grid.CountGetCellTextCalls("Sheet1", 6, 4));
+            Assert.Contains(connector.LastBatchSaveChanges, change => change.RowId == "row-1" && change.ApiFieldKey == "start_12345678" && change.NewValue == "2025-03-18");
+            Assert.Contains(connector.LastBatchSaveChanges, change => change.RowId == "row-1" && change.ApiFieldKey == "end_12345678" && change.NewValue == "25%");
+        }
+
+        [Fact]
         public void ExecuteFullDownloadAutoReinitializesWhenStoredMappingsLackUsableIdDefinition()
         {
             var connector = new FakeSystemConnector();
@@ -406,6 +506,103 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Equal("performance", connector.LastBatchSaveProjectId);
             Assert.Single(connector.LastBatchSaveChanges);
             Assert.Equal("2026-01-10", connector.LastBatchSaveChanges[0].NewValue);
+        }
+
+        [Fact]
+        public void PreparePartialUploadReadsEachRowIdAtMostOncePerRow()
+        {
+            var connector = new FakeSystemConnector();
+            var metadataStore = new FakeWorksheetMetadataStore();
+            var binding = new SheetBinding
+            {
+                SheetName = "Sheet1",
+                SystemKey = "current-business-system",
+                ProjectId = "performance",
+                ProjectName = "绩效项目",
+                HeaderStartRow = 3,
+                HeaderRowCount = 2,
+                DataStartRow = 6,
+            };
+            metadataStore.Bindings["Sheet1"] = binding;
+            metadataStore.FieldMappings["Sheet1"] = BuildDefaultMappings("Sheet1");
+
+            var selectionReader = new FakeWorksheetSelectionReader
+            {
+                VisibleCells = new[]
+                {
+                    new SelectedVisibleCell { Row = 6, Column = 3, Value = "2026-01-02" },
+                    new SelectedVisibleCell { Row = 6, Column = 4, Value = "2026-01-05" },
+                    new SelectedVisibleCell { Row = 7, Column = 2, Value = "王五" },
+                },
+            };
+            var (service, grid) = CreateService(connector, metadataStore, selectionReader);
+            SeedRecognizedHeaders(grid, "Sheet1", binding);
+            grid.SetCell("Sheet1", 6, 1, "row-1");
+            grid.SetCell("Sheet1", 6, 2, "张三");
+            grid.SetCell("Sheet1", 6, 3, "2026-01-02");
+            grid.SetCell("Sheet1", 6, 4, "2026-01-05");
+            grid.SetCell("Sheet1", 7, 1, "row-2");
+            grid.SetCell("Sheet1", 7, 2, "王五");
+
+            var plan = InvokePrepare(service, "PreparePartialUpload", "Sheet1");
+            var preview = ReadPreview(plan);
+
+            Assert.Equal(3, preview.Changes.Length);
+            Assert.Equal(1, grid.CountGetCellTextCalls("Sheet1", 6, 1));
+            Assert.Equal(1, grid.CountGetCellTextCalls("Sheet1", 7, 1));
+        }
+
+        [Fact]
+        public void ExecutePartialDownloadReadsEachRowIdAtMostOncePerRow()
+        {
+            var connector = new FakeSystemConnector();
+            var metadataStore = new FakeWorksheetMetadataStore();
+            var binding = new SheetBinding
+            {
+                SheetName = "Sheet1",
+                SystemKey = "current-business-system",
+                ProjectId = "performance",
+                ProjectName = "绩效项目",
+                HeaderStartRow = 3,
+                HeaderRowCount = 2,
+                DataStartRow = 6,
+            };
+            metadataStore.Bindings["Sheet1"] = binding;
+            metadataStore.FieldMappings["Sheet1"] = BuildDefaultMappings("Sheet1");
+            connector.FindResult = new[]
+            {
+                CreateRow("row-1", "张三", "2026-02-01", "2026-02-09"),
+                CreateRow("row-2", "王五", "2026-03-01", "2026-03-07"),
+            };
+
+            var selectionReader = new FakeWorksheetSelectionReader
+            {
+                VisibleCells = new[]
+                {
+                    new SelectedVisibleCell { Row = 6, Column = 3, Value = "旧开始时间" },
+                    new SelectedVisibleCell { Row = 6, Column = 4, Value = "旧结束时间" },
+                    new SelectedVisibleCell { Row = 7, Column = 2, Value = "旧负责人" },
+                },
+            };
+            var (service, grid) = CreateService(connector, metadataStore, selectionReader);
+            SeedRecognizedHeaders(grid, "Sheet1", binding);
+            grid.SetCell("Sheet1", 6, 1, "row-1");
+            grid.SetCell("Sheet1", 6, 2, "张三");
+            grid.SetCell("Sheet1", 6, 3, "旧开始时间");
+            grid.SetCell("Sheet1", 6, 4, "旧结束时间");
+            grid.SetCell("Sheet1", 7, 1, "row-2");
+            grid.SetCell("Sheet1", 7, 2, "旧负责人");
+
+            var plan = InvokePrepare(service, "PreparePartialDownload", "Sheet1");
+            grid.GetCellTextCalls.Clear();
+
+            InvokeExecute(service, "ExecuteDownload", plan);
+
+            Assert.Equal(1, grid.CountGetCellTextCalls("Sheet1", 6, 1));
+            Assert.Equal(1, grid.CountGetCellTextCalls("Sheet1", 7, 1));
+            Assert.Equal("2026-02-01", grid.GetCell("Sheet1", 6, 3));
+            Assert.Equal("2026-02-09", grid.GetCell("Sheet1", 6, 4));
+            Assert.Equal("王五", grid.GetCell("Sheet1", 7, 2));
         }
 
         private static (object Service, FakeWorksheetGridAdapter Grid) CreateService(
@@ -882,7 +1079,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
         private sealed class FakeWorksheetGridAdapter : RealProxy
         {
-            private readonly Dictionary<string, string> cells = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            private readonly Dictionary<string, FakeCell> cells = new Dictionary<string, FakeCell>(StringComparer.OrdinalIgnoreCase);
 
             public FakeWorksheetGridAdapter(Type interfaceType)
                 : base(interfaceType)
@@ -895,6 +1092,10 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             public List<WriteRangeRecord> WriteRangeCalls { get; } = new List<WriteRangeRecord>();
 
+            public List<ReadRangeRecord> ReadRangeCalls { get; } = new List<ReadRangeRecord>();
+
+            public List<GetCellTextRecord> GetCellTextCalls { get; } = new List<GetCellTextRecord>();
+
             public int BeginBulkOperationCount { get; private set; }
 
             public int EndBulkOperationCount { get; private set; }
@@ -906,10 +1107,18 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 switch (call.MethodName)
                 {
                     case "GetCellText":
-                        return new ReturnMessage(GetCell(
-                            (string)call.InArgs[0],
-                            (int)call.InArgs[1],
-                            (int)call.InArgs[2]), null, 0, call.LogicalCallContext, call);
+                        {
+                            var sheetName = (string)call.InArgs[0];
+                            var row = (int)call.InArgs[1];
+                            var column = (int)call.InArgs[2];
+                            GetCellTextCalls.Add(new GetCellTextRecord
+                            {
+                                SheetName = sheetName,
+                                Row = row,
+                                Column = column,
+                            });
+                            return new ReturnMessage(GetCell(sheetName, row, column), null, 0, call.LogicalCallContext, call);
+                        }
                     case "SetCellText":
                         SetCell(
                             (string)call.InArgs[0],
@@ -950,29 +1159,51 @@ namespace OfficeAgent.ExcelAddIn.Tests
                             (object[,])call.InArgs[3]);
                         return new ReturnMessage(null, null, 0, call.LogicalCallContext, call);
                     case "ReadRangeValues":
-                        return new ReturnMessage(
-                            ReadRangeValues(
-                                (string)call.InArgs[0],
-                                (int)call.InArgs[1],
-                                (int)call.InArgs[2],
-                                (int)call.InArgs[3],
-                                (int)call.InArgs[4]),
-                            null,
-                            0,
-                            call.LogicalCallContext,
-                            call);
+                        {
+                            var sheetName = (string)call.InArgs[0];
+                            var startRow = (int)call.InArgs[1];
+                            var endRow = (int)call.InArgs[2];
+                            var startColumn = (int)call.InArgs[3];
+                            var endColumn = (int)call.InArgs[4];
+                            ReadRangeCalls.Add(new ReadRangeRecord
+                            {
+                                MethodName = "ReadRangeValues",
+                                SheetName = sheetName,
+                                StartRow = startRow,
+                                EndRow = endRow,
+                                StartColumn = startColumn,
+                                EndColumn = endColumn,
+                            });
+                            return new ReturnMessage(
+                                ReadRangeValues(sheetName, startRow, endRow, startColumn, endColumn),
+                                null,
+                                0,
+                                call.LogicalCallContext,
+                                call);
+                        }
                     case "ReadRangeNumberFormats":
-                        return new ReturnMessage(
-                            ReadRangeNumberFormats(
-                                (string)call.InArgs[0],
-                                (int)call.InArgs[1],
-                                (int)call.InArgs[2],
-                                (int)call.InArgs[3],
-                                (int)call.InArgs[4]),
-                            null,
-                            0,
-                            call.LogicalCallContext,
-                            call);
+                        {
+                            var sheetName = (string)call.InArgs[0];
+                            var startRow = (int)call.InArgs[1];
+                            var endRow = (int)call.InArgs[2];
+                            var startColumn = (int)call.InArgs[3];
+                            var endColumn = (int)call.InArgs[4];
+                            ReadRangeCalls.Add(new ReadRangeRecord
+                            {
+                                MethodName = "ReadRangeNumberFormats",
+                                SheetName = sheetName,
+                                StartRow = startRow,
+                                EndRow = endRow,
+                                StartColumn = startColumn,
+                                EndColumn = endColumn,
+                            });
+                            return new ReturnMessage(
+                                ReadRangeNumberFormats(sheetName, startRow, endRow, startColumn, endColumn),
+                                null,
+                                0,
+                                call.LogicalCallContext,
+                                call);
+                        }
                     case "BeginBulkOperation":
                         BeginBulkOperationCount++;
                         return new ReturnMessage(
@@ -988,14 +1219,37 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             public void SetCell(string sheetName, int row, int column, string value)
             {
-                cells[BuildKey(sheetName, row, column)] = value ?? string.Empty;
+                cells[BuildKey(sheetName, row, column)] = new FakeCell
+                {
+                    Text = value ?? string.Empty,
+                    RawValue = value ?? string.Empty,
+                    NumberFormat = string.Empty,
+                };
+            }
+
+            public void SetRawCell(string sheetName, int row, int column, object rawValue, string numberFormat = "", string text = null)
+            {
+                cells[BuildKey(sheetName, row, column)] = new FakeCell
+                {
+                    Text = text ?? Convert.ToString(rawValue) ?? string.Empty,
+                    RawValue = rawValue,
+                    NumberFormat = numberFormat ?? string.Empty,
+                };
             }
 
             public string GetCell(string sheetName, int row, int column)
             {
-                return cells.TryGetValue(BuildKey(sheetName, row, column), out var value)
-                    ? value
+                return cells.TryGetValue(BuildKey(sheetName, row, column), out var cell)
+                    ? cell.Text
                     : string.Empty;
+            }
+
+            public int CountGetCellTextCalls(string sheetName, int row, int column)
+            {
+                return GetCellTextCalls.Count(call =>
+                    string.Equals(call.SheetName, sheetName, StringComparison.OrdinalIgnoreCase) &&
+                    call.Row == row &&
+                    call.Column == column);
             }
 
             public new object GetTransparentProxy()
@@ -1077,11 +1331,12 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 {
                     for (var columnOffset = 0; columnOffset < values.GetLength(1); columnOffset++)
                     {
-                        SetCell(
+                        SetRawCell(
                             sheetName,
                             startRow + rowOffset,
                             startColumn + columnOffset,
-                            Convert.ToString(values[rowOffset, columnOffset]) ?? string.Empty);
+                            values[rowOffset, columnOffset],
+                            text: Convert.ToString(values[rowOffset, columnOffset]) ?? string.Empty);
                     }
                 }
             }
@@ -1100,14 +1355,18 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 {
                     for (var columnOffset = 0; columnOffset < columnCount; columnOffset++)
                     {
-                        values[rowOffset, columnOffset] = GetCell(sheetName, startRow + rowOffset, startColumn + columnOffset);
+                        values[rowOffset, columnOffset] = cells.TryGetValue(
+                            BuildKey(sheetName, startRow + rowOffset, startColumn + columnOffset),
+                            out var cell)
+                            ? cell.RawValue
+                            : string.Empty;
                     }
                 }
 
                 return values;
             }
 
-            private static string[,] ReadRangeNumberFormats(
+            private string[,] ReadRangeNumberFormats(
                 string sheetName,
                 int startRow,
                 int endRow,
@@ -1116,7 +1375,20 @@ namespace OfficeAgent.ExcelAddIn.Tests
             {
                 var rowCount = Math.Max(0, endRow - startRow + 1);
                 var columnCount = Math.Max(0, endColumn - startColumn + 1);
-                return new string[rowCount, columnCount];
+                var formats = new string[rowCount, columnCount];
+                for (var rowOffset = 0; rowOffset < rowCount; rowOffset++)
+                {
+                    for (var columnOffset = 0; columnOffset < columnCount; columnOffset++)
+                    {
+                        formats[rowOffset, columnOffset] = cells.TryGetValue(
+                            BuildKey(sheetName, startRow + rowOffset, startColumn + columnOffset),
+                            out var cell)
+                            ? cell.NumberFormat
+                            : string.Empty;
+                    }
+                }
+
+                return formats;
             }
 
             private static bool IsWithinRange(
@@ -1150,6 +1422,15 @@ namespace OfficeAgent.ExcelAddIn.Tests
             {
                 return string.Join("|", sheetName ?? string.Empty, row, column);
             }
+
+            private sealed class FakeCell
+            {
+                public string Text { get; set; } = string.Empty;
+
+                public object RawValue { get; set; } = string.Empty;
+
+                public string NumberFormat { get; set; } = string.Empty;
+            }
         }
 
         public sealed class MergeRecord
@@ -1176,6 +1457,23 @@ namespace OfficeAgent.ExcelAddIn.Tests
             public int StartRow { get; set; }
             public int StartColumn { get; set; }
             public object[,] Values { get; set; }
+        }
+
+        public sealed class ReadRangeRecord
+        {
+            public string MethodName { get; set; }
+            public string SheetName { get; set; }
+            public int StartRow { get; set; }
+            public int EndRow { get; set; }
+            public int StartColumn { get; set; }
+            public int EndColumn { get; set; }
+        }
+
+        public sealed class GetCellTextRecord
+        {
+            public string SheetName { get; set; }
+            public int Row { get; set; }
+            public int Column { get; set; }
         }
 
         private sealed class DelegateDisposeScope : IDisposable

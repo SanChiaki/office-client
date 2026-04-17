@@ -41,6 +41,7 @@ namespace OfficeAgent.ExcelAddIn
         private readonly SyncOperationPreviewFactory previewFactory;
         private readonly WorksheetHeaderMatcher headerMatcher;
         private readonly FieldMappingValueAccessor valueAccessor;
+        private readonly ExcelUploadValueNormalizer uploadValueNormalizer;
 
         public WorksheetSyncExecutionService(
             WorksheetSyncService worksheetSyncService,
@@ -59,6 +60,7 @@ namespace OfficeAgent.ExcelAddIn
             segmentBuilder = new WorksheetColumnSegmentBuilder();
             valueAccessor = new FieldMappingValueAccessor();
             headerMatcher = new WorksheetHeaderMatcher(valueAccessor);
+            uploadValueNormalizer = new ExcelUploadValueNormalizer();
         }
 
         public void InitializeCurrentSheet(string sheetName, ProjectOption project)
@@ -126,7 +128,8 @@ namespace OfficeAgent.ExcelAddIn
         public WorksheetDownloadPlan PreparePartialDownload(string sheetName)
         {
             var context = ResolveMatchedSheetContext(sheetName);
-            var selection = ResolveCurrentSelection(sheetName, context.Schema);
+            var rowIdAccessor = CreateCachedRowIdAccessor(sheetName, context.Schema);
+            var selection = ResolveCurrentSelection(context.Schema, rowIdAccessor);
             var rows = selection.RowIds.Length == 0
                 ? Array.Empty<IDictionary<string, object>>()
                 : worksheetSyncService.Download(context.Binding.SystemKey, context.Binding.ProjectId, selection.RowIds, selection.ApiFieldKeys);
@@ -179,8 +182,9 @@ namespace OfficeAgent.ExcelAddIn
         public WorksheetUploadPlan PreparePartialUpload(string sheetName)
         {
             var context = ResolveMatchedSheetContext(sheetName);
-            var selection = ResolveCurrentSelection(sheetName, context.Schema);
-            var changes = ReadSelectionChanges(sheetName, context.Schema, selection);
+            var rowIdAccessor = CreateCachedRowIdAccessor(sheetName, context.Schema);
+            var selection = ResolveCurrentSelection(context.Schema, rowIdAccessor);
+            var changes = ReadSelectionChanges(sheetName, context.Schema, selection, rowIdAccessor);
 
             return new WorksheetUploadPlan
             {
@@ -480,6 +484,7 @@ namespace OfficeAgent.ExcelAddIn
             var rowsById = (plan.Rows ?? Array.Empty<IDictionary<string, object>>())
                 .Where(row => !string.IsNullOrWhiteSpace(GetRowId(plan.Schema, row)))
                 .ToDictionary(row => GetRowId(plan.Schema, row), row => row, StringComparer.Ordinal);
+            var rowIdAccessor = CreateCachedRowIdAccessor(plan.SheetName, plan.Schema);
 
             foreach (var targetCell in plan.Selection?.TargetCells ?? Array.Empty<SelectedVisibleCell>())
             {
@@ -488,7 +493,7 @@ namespace OfficeAgent.ExcelAddIn
                     continue;
                 }
 
-                var rowId = GetRowId(plan.SheetName, plan.Schema, targetCell.Row);
+                var rowId = rowIdAccessor(targetCell.Row);
                 if (string.IsNullOrWhiteSpace(rowId) || !rowsById.TryGetValue(rowId, out var row))
                 {
                     continue;
@@ -498,10 +503,10 @@ namespace OfficeAgent.ExcelAddIn
             }
         }
 
-        private ResolvedSelection ResolveCurrentSelection(string sheetName, WorksheetSchema schema)
+        private ResolvedSelection ResolveCurrentSelection(WorksheetSchema schema, Func<int, string> rowIdAccessor)
         {
             var visibleCells = selectionReader.ReadVisibleSelection() ?? Array.Empty<SelectedVisibleCell>();
-            return selectionResolver.Resolve(schema, visibleCells, row => GetRowId(sheetName, schema, row));
+            return selectionResolver.Resolve(schema, visibleCells, rowIdAccessor);
         }
 
         private CellChange[] ReadAllCurrentCells(string sheetName, SheetBinding binding, WorksheetSchema schema)
@@ -514,10 +519,36 @@ namespace OfficeAgent.ExcelAddIn
 
             var result = new List<CellChange>();
             var lastUsedRow = gridAdapter.GetLastUsedRow(sheetName);
+            if (lastUsedRow < binding.DataStartRow)
+            {
+                return Array.Empty<CellChange>();
+            }
+
+            var columns = (schema.Columns ?? Array.Empty<WorksheetColumnBinding>())
+                .Where(column => column != null)
+                .OrderBy(column => column.ColumnIndex)
+                .ToArray();
+            if (columns.Length == 0)
+            {
+                return Array.Empty<CellChange>();
+            }
+
+            var startColumn = columns.Min(column => column.ColumnIndex);
+            var endColumn = columns.Max(column => column.ColumnIndex);
+            var values = gridAdapter.ReadRangeValues(sheetName, binding.DataStartRow, lastUsedRow, startColumn, endColumn);
+            var numberFormats = gridAdapter.ReadRangeNumberFormats(sheetName, binding.DataStartRow, lastUsedRow, startColumn, endColumn);
 
             for (var row = binding.DataStartRow; row <= lastUsedRow; row++)
             {
-                var rowId = gridAdapter.GetCellText(sheetName, row, idColumn.ColumnIndex);
+                var rowOffset = row - binding.DataStartRow;
+                var rowId = ReadUploadCellValue(
+                    sheetName,
+                    row,
+                    idColumn.ColumnIndex,
+                    rowOffset,
+                    idColumn.ColumnIndex - startColumn,
+                    values,
+                    numberFormats);
                 if (string.IsNullOrWhiteSpace(rowId))
                 {
                     continue;
@@ -531,7 +562,14 @@ namespace OfficeAgent.ExcelAddIn
                         RowId = rowId,
                         ApiFieldKey = column.ApiFieldKey,
                         OldValue = string.Empty,
-                        NewValue = gridAdapter.GetCellText(sheetName, row, column.ColumnIndex),
+                        NewValue = ReadUploadCellValue(
+                            sheetName,
+                            row,
+                            column.ColumnIndex,
+                            rowOffset,
+                            column.ColumnIndex - startColumn,
+                            values,
+                            numberFormats),
                     });
                 }
             }
@@ -539,7 +577,11 @@ namespace OfficeAgent.ExcelAddIn
             return result.ToArray();
         }
 
-        private CellChange[] ReadSelectionChanges(string sheetName, WorksheetSchema schema, ResolvedSelection selection)
+        private CellChange[] ReadSelectionChanges(
+            string sheetName,
+            WorksheetSchema schema,
+            ResolvedSelection selection,
+            Func<int, string> rowIdAccessor)
         {
             var columnsByIndex = (schema?.Columns ?? Array.Empty<WorksheetColumnBinding>())
                 .ToDictionary(column => column.ColumnIndex, column => column);
@@ -552,7 +594,7 @@ namespace OfficeAgent.ExcelAddIn
                     continue;
                 }
 
-                var rowId = GetRowId(sheetName, schema, targetCell.Row);
+                var rowId = rowIdAccessor(targetCell.Row);
                 if (string.IsNullOrWhiteSpace(rowId))
                 {
                     continue;
@@ -626,6 +668,75 @@ namespace OfficeAgent.ExcelAddIn
             preview.OperationName = operationName;
             preview.Summary = $"{operationName}将提交 {preview.Changes.Length} 个单元格。";
             return preview;
+        }
+
+        private Func<int, string> CreateCachedRowIdAccessor(string sheetName, WorksheetSchema schema)
+        {
+            var idColumn = GetIdColumn(schema);
+            if (idColumn == null)
+            {
+                return _ => string.Empty;
+            }
+
+            var cache = new Dictionary<int, string>();
+            return row =>
+            {
+                if (cache.TryGetValue(row, out var rowId))
+                {
+                    return rowId;
+                }
+
+                rowId = gridAdapter.GetCellText(sheetName, row, idColumn.ColumnIndex);
+                cache[row] = rowId ?? string.Empty;
+                return cache[row];
+            };
+        }
+
+        private string ReadUploadCellValue(
+            string sheetName,
+            int row,
+            int column,
+            int rowOffset,
+            int columnOffset,
+            object[,] values,
+            string[,] numberFormats)
+        {
+            var value = GetRangeValue(values, rowOffset, columnOffset);
+            var numberFormat = GetRangeValue(numberFormats, rowOffset, columnOffset);
+            if (uploadValueNormalizer.TryNormalize(value, numberFormat, out var normalized))
+            {
+                return normalized;
+            }
+
+            return gridAdapter.GetCellText(sheetName, row, column);
+        }
+
+        private static object GetRangeValue(object[,] values, int rowOffset, int columnOffset)
+        {
+            if (values == null ||
+                rowOffset < 0 ||
+                columnOffset < 0 ||
+                rowOffset >= values.GetLength(0) ||
+                columnOffset >= values.GetLength(1))
+            {
+                return null;
+            }
+
+            return values[rowOffset, columnOffset];
+        }
+
+        private static string GetRangeValue(string[,] values, int rowOffset, int columnOffset)
+        {
+            if (values == null ||
+                rowOffset < 0 ||
+                columnOffset < 0 ||
+                rowOffset >= values.GetLength(0) ||
+                columnOffset >= values.GetLength(1))
+            {
+                return string.Empty;
+            }
+
+            return values[rowOffset, columnOffset] ?? string.Empty;
         }
 
         private string GetRowId(string sheetName, WorksheetSchema schema, int row)
