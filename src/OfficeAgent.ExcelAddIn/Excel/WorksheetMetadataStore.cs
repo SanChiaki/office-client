@@ -27,6 +27,10 @@ namespace OfficeAgent.ExcelAddIn.Excel
 
         private readonly IWorksheetMetadataAdapter adapter;
         private string[] fieldMappingHeaders = DefaultFieldMappingHeaders.ToArray();
+        private string[][] bindingRowsCache;
+        private bool bindingRowsCacheLoaded;
+        private string[][] fieldMappingRowsCache;
+        private bool fieldMappingRowsCacheLoaded;
 
         public WorksheetMetadataStore(IWorksheetMetadataAdapter adapter)
         {
@@ -47,7 +51,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
 
             adapter.EnsureWorksheet(MetadataSheetName, visible: true);
             var normalizedSheetName = binding.SheetName;
-            var rows = adapter.ReadTable(BindingsTableName)?.ToList() ?? new List<string[]>();
+            var rows = GetBindingRows().ToList();
             var newRow = new[]
             {
                 normalizedSheetName,
@@ -73,6 +77,8 @@ namespace OfficeAgent.ExcelAddIn.Excel
             }
 
             adapter.WriteTable(BindingsTableName, BindingHeaders, rows.ToArray());
+            bindingRowsCache = CloneRows(rows);
+            bindingRowsCacheLoaded = true;
         }
 
         public SheetBinding LoadBinding(string sheetName)
@@ -82,7 +88,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 throw new ArgumentException("Sheet name is required.", nameof(sheetName));
             }
 
-            var rows = adapter.ReadTable(BindingsTableName) ?? Array.Empty<string[]>();
+            var rows = GetBindingRows();
 
             foreach (var row in rows)
             {
@@ -130,7 +136,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 .ToArray();
             fieldMappingHeaders = headers.ToArray();
 
-            var existingRows = adapter.ReadTable(FieldMappingsTableName)?.ToList() ?? new List<string[]>();
+            var existingRows = GetFieldMappingRows().ToList();
             existingRows.RemoveAll(row =>
                 row.Length > 0 &&
                 string.Equals(row[0], sheetName, StringComparison.OrdinalIgnoreCase));
@@ -153,6 +159,8 @@ namespace OfficeAgent.ExcelAddIn.Excel
             }
 
             adapter.WriteTable(FieldMappingsTableName, headers, existingRows.ToArray());
+            fieldMappingRowsCache = CloneRows(existingRows);
+            fieldMappingRowsCacheLoaded = true;
         }
 
         public SheetFieldMappingRow[] LoadFieldMappings(string sheetName, FieldMappingTableDefinition definition)
@@ -168,7 +176,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
             }
 
             var columns = GetValidatedColumns(definition);
-            var rows = adapter.ReadTable(FieldMappingsTableName) ?? Array.Empty<string[]>();
+            var rows = GetFieldMappingRows();
 
             return rows
                 .Where(row =>
@@ -202,7 +210,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 throw new ArgumentException("Sheet name is required.", nameof(sheetName));
             }
 
-            var rows = adapter.ReadTable(FieldMappingsTableName)?.ToList() ?? new List<string[]>();
+            var rows = GetFieldMappingRows().ToList();
             var removed = rows.RemoveAll(row =>
                 row.Length > 0 &&
                 string.Equals(row[0], sheetName, StringComparison.OrdinalIgnoreCase));
@@ -214,6 +222,8 @@ namespace OfficeAgent.ExcelAddIn.Excel
 
             var headers = ResolveFieldMappingHeaders(rows);
             adapter.WriteTable(FieldMappingsTableName, headers, rows.ToArray());
+            fieldMappingRowsCache = CloneRows(rows);
+            fieldMappingRowsCacheLoaded = true;
         }
 
         public WorksheetSnapshotCell[] LoadSnapshot(string sheetName)
@@ -237,6 +247,14 @@ namespace OfficeAgent.ExcelAddIn.Excel
             {
                 throw new ArgumentNullException(nameof(cells));
             }
+        }
+
+        internal void InvalidateCache()
+        {
+            bindingRowsCache = null;
+            bindingRowsCacheLoaded = false;
+            fieldMappingRowsCache = null;
+            fieldMappingRowsCacheLoaded = false;
         }
 
         private static int ParseIntOrDefault(IReadOnlyList<string> row, int index, int defaultValue)
@@ -287,6 +305,35 @@ namespace OfficeAgent.ExcelAddIn.Excel
             }
 
             return headers;
+        }
+
+        private IReadOnlyList<string[]> GetBindingRows()
+        {
+            if (!bindingRowsCacheLoaded)
+            {
+                bindingRowsCache = adapter.ReadTable(BindingsTableName) ?? Array.Empty<string[]>();
+                bindingRowsCacheLoaded = true;
+            }
+
+            return bindingRowsCache ?? Array.Empty<string[]>();
+        }
+
+        private IReadOnlyList<string[]> GetFieldMappingRows()
+        {
+            if (!fieldMappingRowsCacheLoaded)
+            {
+                fieldMappingRowsCache = adapter.ReadTable(FieldMappingsTableName) ?? Array.Empty<string[]>();
+                fieldMappingRowsCacheLoaded = true;
+            }
+
+            return fieldMappingRowsCache ?? Array.Empty<string[]>();
+        }
+
+        private static string[][] CloneRows(IEnumerable<string[]> rows)
+        {
+            return (rows ?? Array.Empty<string[]>())
+                .Select(row => row?.ToArray() ?? Array.Empty<string>())
+                .ToArray();
         }
     }
 }

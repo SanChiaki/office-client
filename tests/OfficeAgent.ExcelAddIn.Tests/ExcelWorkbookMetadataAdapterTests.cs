@@ -104,6 +104,36 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
+        public void ReadTableCanParseSectionsFromUsedRangeValue2WithoutDirectCellReads()
+        {
+            var addInAssembly = Assembly.LoadFrom(ResolveAddInAssemblyPath());
+            var excelAssembly = LoadExcelInteropAssembly();
+            var worksheetType = excelAssembly.GetType("Microsoft.Office.Interop.Excel.Worksheet", throwOnError: true);
+            var sheetsType = excelAssembly.GetType("Microsoft.Office.Interop.Excel.Sheets", throwOnError: true);
+            var workbookType = excelAssembly.GetType("Microsoft.Office.Interop.Excel.Workbook", throwOnError: true);
+            var applicationType = excelAssembly.GetType("Microsoft.Office.Interop.Excel.Application", throwOnError: true);
+            var rangeType = excelAssembly.GetType("Microsoft.Office.Interop.Excel.Range", throwOnError: true);
+
+            var application = new LayoutAwareFakeExcelApplication(applicationType, workbookType, sheetsType, worksheetType, rangeType);
+            application.CreateWorksheet("_Settings");
+            application.MetadataSheet.SetCell(1, 1, "SheetBindings");
+            application.MetadataSheet.SetCell(2, 1, "SheetName");
+            application.MetadataSheet.SetCell(2, 2, "SystemKey");
+            application.MetadataSheet.SetCell(3, 1, "Sheet1");
+            application.MetadataSheet.SetCell(3, 2, "current-business-system");
+            application.MetadataSheet.ThrowOnDirectCellReads = true;
+
+            var adapterType = addInAssembly.GetType("OfficeAgent.ExcelAddIn.Excel.ExcelWorkbookMetadataAdapter", throwOnError: true);
+            var adapter = Activator.CreateInstance(adapterType, application.GetTransparentProxy());
+
+            var rows = (string[][])adapterType.GetMethod("ReadTable").Invoke(adapter, new object[] { "SheetBindings" });
+
+            Assert.Single(rows);
+            Assert.Equal(new[] { "Sheet1", "current-business-system" }, rows[0]);
+            Assert.Equal(1, application.MetadataSheet.UsedRangeValue2ReadCount);
+        }
+
+        [Fact]
         public void ReadTableDoesNotCreateSettingsWorksheetWhenMetadataSheetIsMissing()
         {
             var addInAssembly = Assembly.LoadFrom(ResolveAddInAssemblyPath());
@@ -345,6 +375,10 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             public int ActivateCount { get; private set; }
 
+            public bool ThrowOnDirectCellReads { get; set; }
+
+            public int UsedRangeValue2ReadCount { get; private set; }
+
             public void SetCell(int row, int column, string value)
             {
                 if (string.IsNullOrEmpty(value))
@@ -358,7 +392,43 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             public string GetCell(int row, int column)
             {
+                if (ThrowOnDirectCellReads)
+                {
+                    throw new InvalidOperationException("Direct cell reads are disabled for this test.");
+                }
+
                 return cells.TryGetValue((row, column), out var value) ? value : string.Empty;
+            }
+
+            public object GetUsedRangeValue2()
+            {
+                var usedRange = GetUsedRange();
+                if (!usedRange.HasValue)
+                {
+                    return null;
+                }
+
+                UsedRangeValue2ReadCount++;
+                var firstRow = usedRange.Value.FirstRow;
+                var rowCount = usedRange.Value.RowCount;
+                var columnCount = usedRange.Value.ColumnCount;
+
+                if (rowCount == 1 && columnCount == 1)
+                {
+                    return cells.TryGetValue((firstRow, 1), out var scalar) ? scalar : null;
+                }
+
+                var values = new object[rowCount, columnCount];
+                for (var rowOffset = 0; rowOffset < rowCount; rowOffset++)
+                {
+                    for (var columnIndex = 0; columnIndex < columnCount; columnIndex++)
+                    {
+                        cells.TryGetValue((firstRow + rowOffset, columnIndex + 1), out var value);
+                        values[rowOffset, columnIndex] = value;
+                    }
+                }
+
+                return values;
             }
 
             public void ClearAllCells()
@@ -486,7 +556,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
                     "get_Item" => HandleGetItem(call),
                     "get__Default" => HandleGetItem(call),
                     "Item" => HandleGetItem(call),
-                    "get_Value2" => new ReturnMessage(worksheet.GetCell(row, column), null, 0, call.LogicalCallContext, call),
+                    "get_Value2" => HandleGetValue2(call),
                     "set_Value2" => HandleSetValue(call),
                     "ClearContents" => HandleClearContents(call),
                     "get_Row" => new ReturnMessage(row, null, 0, call.LogicalCallContext, call),
@@ -523,6 +593,24 @@ namespace OfficeAgent.ExcelAddIn.Tests
                     row: cellRow,
                     column: cellColumn);
                 return new ReturnMessage(cell.GetTransparentProxy(), null, 0, call.LogicalCallContext, call);
+            }
+
+            private IMessage HandleGetValue2(IMethodCallMessage call)
+            {
+                object value;
+                switch (kind)
+                {
+                    case LayoutAwareFakeExcelRangeKind.Cell:
+                        value = worksheet.GetCell(row, column);
+                        break;
+                    case LayoutAwareFakeExcelRangeKind.UsedRange:
+                        value = worksheet.GetUsedRangeValue2();
+                        break;
+                    default:
+                        throw new NotSupportedException(call.MethodName + ":" + kind);
+                }
+
+                return new ReturnMessage(value, null, 0, call.LogicalCallContext, call);
             }
 
             private IMessage HandleSetValue(IMethodCallMessage call)

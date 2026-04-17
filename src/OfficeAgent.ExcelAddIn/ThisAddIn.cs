@@ -34,6 +34,7 @@ namespace OfficeAgent.ExcelAddIn
         internal RibbonSyncController RibbonSyncController { get; private set; }
 
         private bool isRestoringWorksheetFocus;
+        private string lastProjectRefreshSheetName = string.Empty;
 
         private void ThisAddIn_Startup(object sender, EventArgs e)
         {
@@ -102,14 +103,17 @@ namespace OfficeAgent.ExcelAddIn
                 GetActiveWorksheetName,
                 WorksheetSyncExecutionService);
             RibbonSyncController.RefreshActiveProjectFromSheetMetadata();
+            lastProjectRefreshSheetName = GetActiveWorksheetName();
             TaskPaneController = new TaskPaneController(this, SessionStore, SettingsStore, ExcelContextService, ExcelCommandExecutor, AgentOrchestrator, SharedCookies, CookieStore);
             Application.SheetSelectionChange += Application_SheetSelectionChange;
+            Application.SheetChange += Application_SheetChange;
             OfficeAgentLog.Info("host", "startup.completed", "OfficeAgent Excel add-in started.");
         }
 
         private void ThisAddIn_Shutdown(object sender, EventArgs e)
         {
             Application.SheetSelectionChange -= Application_SheetSelectionChange;
+            Application.SheetChange -= Application_SheetChange;
             OfficeAgentLog.Info("host", "shutdown", "OfficeAgent Excel add-in stopped.");
             OfficeAgentLog.Reset();
         }
@@ -123,9 +127,29 @@ namespace OfficeAgent.ExcelAddIn
         private void Application_SheetSelectionChange(object sh, ExcelInterop.Range target)
         {
             OfficeAgentLog.Info("excel", "selection.changed", "Excel selection changed.");
-            RibbonSyncController?.RefreshActiveProjectFromSheetMetadata();
+            var sheetName = GetWorksheetName(sh);
+            if (!string.Equals(lastProjectRefreshSheetName, sheetName, StringComparison.OrdinalIgnoreCase))
+            {
+                RibbonSyncController?.RefreshActiveProjectFromSheetMetadata();
+                lastProjectRefreshSheetName = sheetName;
+            }
+
             TaskPaneController?.PublishSelectionContext(ExcelContextService.GetCurrentSelectionContext());
             RestoreWorksheetFocus(target);
+        }
+
+        private void Application_SheetChange(object sh, ExcelInterop.Range target)
+        {
+            var sheetName = GetWorksheetName(sh);
+            if (!string.Equals(sheetName, "_Settings", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var metadataStore = WorksheetMetadataStore as OfficeAgent.ExcelAddIn.Excel.WorksheetMetadataStore;
+            metadataStore.InvalidateCache();
+            RibbonSyncController?.InvalidateRefreshState();
+            lastProjectRefreshSheetName = string.Empty;
         }
 
         private string GetActiveWorksheetName()
@@ -139,6 +163,12 @@ namespace OfficeAgent.ExcelAddIn
             {
                 return string.Empty;
             }
+        }
+
+        private static string GetWorksheetName(object sheet)
+        {
+            var worksheet = sheet as ExcelInterop.Worksheet;
+            return worksheet?.Name ?? string.Empty;
         }
 
         private void RestoreWorksheetFocus(ExcelInterop.Range target)

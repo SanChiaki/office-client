@@ -222,6 +222,21 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Contains("RefreshProjectDropDownFromController();", loadMethodText, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void ThisAddInInvalidatesSettingsCacheWhenSettingsSheetChanges()
+        {
+            var addInCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "ThisAddIn.cs"));
+
+            Assert.Contains("Application.SheetChange += Application_SheetChange;", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("private void Application_SheetChange(object sh, ExcelInterop.Range target)", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("string.Equals(sheetName, \"_Settings\", StringComparison.OrdinalIgnoreCase)", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("metadataStore.InvalidateCache();", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("RibbonSyncController?.InvalidateRefreshState();", addInCodeText, StringComparison.Ordinal);
+        }
+
         private static string ResolveRepositoryPath(params string[] segments)
         {
             return Path.GetFullPath(Path.Combine(new[]

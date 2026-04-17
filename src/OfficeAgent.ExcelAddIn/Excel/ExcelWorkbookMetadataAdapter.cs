@@ -201,9 +201,9 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 return Array.Empty<string[]>();
             }
 
-            var startRow = usedRange.Row;
             var rowCount = usedRange.Rows.Count;
             var columnCount = usedRange.Columns.Count;
+            var rawValues = usedRange.Value2;
             var rows = new string[rowCount][];
 
             for (var rowOffset = 0; rowOffset < rowCount; rowOffset++)
@@ -213,8 +213,8 @@ namespace OfficeAgent.ExcelAddIn.Excel
 
                 for (var columnIndex = 0; columnIndex < columnCount; columnIndex++)
                 {
-                    var cell = worksheet.Cells[startRow + rowOffset, columnIndex + 1] as ExcelInterop.Range;
-                    values[columnIndex] = Convert.ToString(cell?.Value2) ?? string.Empty;
+                    values[columnIndex] = Convert.ToString(
+                        GetRangeValue(rawValues, rowOffset, columnIndex, rowCount, columnCount)) ?? string.Empty;
                     if (!string.IsNullOrEmpty(values[columnIndex]))
                     {
                         lastValueColumn = columnIndex + 1;
@@ -227,6 +227,30 @@ namespace OfficeAgent.ExcelAddIn.Excel
             }
 
             return rows;
+        }
+
+        private static object GetRangeValue(object rawValues, int rowOffset, int columnOffset, int rowCount, int columnCount)
+        {
+            if (!(rawValues is Array array))
+            {
+                return rowCount == 1 && columnCount == 1 && rowOffset == 0 && columnOffset == 0
+                    ? rawValues
+                    : null;
+            }
+
+            if (array.Rank != 2)
+            {
+                return null;
+            }
+
+            var rowIndex = array.GetLowerBound(0) + rowOffset;
+            var columnIndex = array.GetLowerBound(1) + columnOffset;
+            if (rowIndex > array.GetUpperBound(0) || columnIndex > array.GetUpperBound(1))
+            {
+                return null;
+            }
+
+            return array.GetValue(rowIndex, columnIndex);
         }
     }
 }

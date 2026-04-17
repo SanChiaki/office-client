@@ -96,6 +96,64 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
+        public void LoadBindingUsesCachedRowsUntilBindingsChange()
+        {
+            var (store, adapter) = CreateStore();
+            adapter.SeedTable("SheetBindings", new[]
+            {
+                new[] { "Sheet1", "current-business-system", "performance", "绩效项目", "3", "2", "6" },
+            });
+
+            var first = InvokeLoadBinding(store, "Sheet1");
+            var second = InvokeLoadBinding(store, "Sheet1");
+
+            Assert.Equal("performance", first.ProjectId);
+            Assert.Equal("performance", second.ProjectId);
+            Assert.Equal(1, adapter.ReadTableCallCount);
+
+            InvokeSaveBinding(store, new SheetBinding
+            {
+                SheetName = "Sheet1",
+                SystemKey = "current-business-system",
+                ProjectId = "refreshed-project",
+                ProjectName = "刷新项目",
+                HeaderStartRow = 4,
+                HeaderRowCount = 1,
+                DataStartRow = 8,
+            });
+
+            var refreshed = InvokeLoadBinding(store, "Sheet1");
+
+            Assert.Equal("refreshed-project", refreshed.ProjectId);
+            Assert.Equal(1, adapter.ReadTableCallCount);
+        }
+
+        [Fact]
+        public void InvalidateCacheForcesBindingRowsToReloadFromAdapter()
+        {
+            var (store, adapter) = CreateStore();
+            adapter.SeedTable("SheetBindings", new[]
+            {
+                new[] { "Sheet1", "current-business-system", "performance", "绩效项目", "3", "2", "6" },
+            });
+
+            var first = InvokeLoadBinding(store, "Sheet1");
+            Assert.Equal("performance", first.ProjectId);
+            Assert.Equal(1, adapter.ReadTableCallCount);
+
+            adapter.SeedTable("SheetBindings", new[]
+            {
+                new[] { "Sheet1", "current-business-system", "updated-project", "新项目", "4", "1", "8" },
+            });
+
+            InvokeInvalidateCache(store);
+            var refreshed = InvokeLoadBinding(store, "Sheet1");
+
+            Assert.Equal("updated-project", refreshed.ProjectId);
+            Assert.Equal(2, adapter.ReadTableCallCount);
+        }
+
+        [Fact]
         public void SaveFieldMappingsPreservesOtherSheetsAndUsesDynamicHeaders()
         {
             var (store, adapter) = CreateStore();
@@ -225,6 +283,108 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Empty(rows);
             Assert.Equal(0, adapter.EnsureWorksheetCallCount);
             Assert.Null(adapter.WorksheetName);
+        }
+
+        [Fact]
+        public void LoadFieldMappingsUsesCachedRowsUntilMappingsChange()
+        {
+            var (store, adapter) = CreateStore();
+            var definition = new FieldMappingTableDefinition
+            {
+                SystemKey = "current-business-system",
+                Columns = new[]
+                {
+                    new FieldMappingColumnDefinition
+                    {
+                        ColumnName = "HeaderId",
+                        Role = FieldMappingSemanticRole.HeaderIdentity,
+                    },
+                    new FieldMappingColumnDefinition
+                    {
+                        ColumnName = "CurrentSingleDisplayName",
+                        Role = FieldMappingSemanticRole.CurrentSingleHeaderText,
+                    },
+                },
+            };
+
+            adapter.SeedTable("SheetFieldMappings", new[]
+            {
+                new[] { "Sheet1", "owner_name", "项目负责人" },
+            });
+
+            var first = InvokeLoadFieldMappings(store, "Sheet1", definition);
+            var second = InvokeLoadFieldMappings(store, "Sheet1", definition);
+
+            Assert.Single(first);
+            Assert.Single(second);
+            Assert.Equal(1, adapter.ReadTableCallCount);
+
+            InvokeSaveFieldMappings(
+                store,
+                "Sheet1",
+                definition,
+                new[]
+                {
+                    new SheetFieldMappingRow
+                    {
+                        SheetName = "Sheet1",
+                        Values = new Dictionary<string, string>
+                        {
+                            ["HeaderId"] = "row_id",
+                            ["CurrentSingleDisplayName"] = "ID",
+                        },
+                    },
+                });
+
+            var refreshed = InvokeLoadFieldMappings(store, "Sheet1", definition);
+
+            Assert.Single(refreshed);
+            Assert.Equal("row_id", refreshed[0].Values["HeaderId"]);
+            Assert.Equal(1, adapter.ReadTableCallCount);
+        }
+
+        [Fact]
+        public void InvalidateCacheForcesFieldMappingsToReloadFromAdapter()
+        {
+            var (store, adapter) = CreateStore();
+            var definition = new FieldMappingTableDefinition
+            {
+                SystemKey = "current-business-system",
+                Columns = new[]
+                {
+                    new FieldMappingColumnDefinition
+                    {
+                        ColumnName = "HeaderId",
+                        Role = FieldMappingSemanticRole.HeaderIdentity,
+                    },
+                    new FieldMappingColumnDefinition
+                    {
+                        ColumnName = "CurrentSingleDisplayName",
+                        Role = FieldMappingSemanticRole.CurrentSingleHeaderText,
+                    },
+                },
+            };
+
+            adapter.SeedTable("SheetFieldMappings", new[]
+            {
+                new[] { "Sheet1", "owner_name", "项目负责人" },
+            });
+
+            var first = InvokeLoadFieldMappings(store, "Sheet1", definition);
+            Assert.Single(first);
+            Assert.Equal(1, adapter.ReadTableCallCount);
+
+            adapter.SeedTable("SheetFieldMappings", new[]
+            {
+                new[] { "Sheet1", "row_id", "ID" },
+            });
+
+            InvokeInvalidateCache(store);
+            var refreshed = InvokeLoadFieldMappings(store, "Sheet1", definition);
+
+            Assert.Single(refreshed);
+            Assert.Equal("row_id", refreshed[0].Values["HeaderId"]);
+            Assert.Equal(2, adapter.ReadTableCallCount);
         }
 
         [Fact]
@@ -362,6 +522,14 @@ namespace OfficeAgent.ExcelAddIn.Tests
             method.Invoke(store, new object[] { sheetName });
         }
 
+        private static void InvokeInvalidateCache(object store)
+        {
+            var method = store.GetType().GetMethod(
+                "InvalidateCache",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            method.Invoke(store, null);
+        }
+
         private static Type GetAddInType(Assembly assembly, string typeName)
         {
             return assembly.GetType(typeName, throwOnError: true);
@@ -391,6 +559,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
             private readonly Dictionary<string, string[]> headers =
                 new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
+            public int ReadTableCallCount { get; private set; }
             public string WorksheetName { get; private set; }
             public bool Visible { get; private set; }
             public int EnsureWorksheetCallCount { get; private set; }
@@ -441,6 +610,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             private IMessage HandleReadTable(IMethodCallMessage call)
             {
+                ReadTableCallCount++;
                 var tableName = (string)call.InArgs[0];
                 tables.TryGetValue(tableName, out var rows);
                 var result = rows?.Select(row => row.ToArray()).ToArray() ?? Array.Empty<string[]>();

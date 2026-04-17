@@ -43,6 +43,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
             }
 
             var rows = mappings ?? Array.Empty<SheetFieldMappingRow>();
+            var lookup = BuildLookup(definition, rows);
             var result = new List<WorksheetRuntimeColumn>();
             var lastUsedColumn = grid.GetLastUsedColumn(sheetName);
             var headerRow = binding.HeaderStartRow <= 0 ? 1 : binding.HeaderStartRow;
@@ -60,7 +61,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
                     currentParent = topText;
                 }
 
-                var match = FindMatch(definition, rows, topText, bottomText, currentParent, binding.HeaderRowCount);
+                var match = FindMatch(lookup, topText, bottomText, currentParent, binding.HeaderRowCount);
                 if (match == null)
                 {
                     continue;
@@ -73,14 +74,13 @@ namespace OfficeAgent.ExcelAddIn.Excel
             return result.ToArray();
         }
 
-        private WorksheetRuntimeColumn FindMatch(
+        private HeaderLookup BuildLookup(
             FieldMappingTableDefinition definition,
-            IReadOnlyList<SheetFieldMappingRow> mappings,
-            string topText,
-            string bottomText,
-            string currentParent,
-            int headerRowCount)
+            IReadOnlyList<SheetFieldMappingRow> mappings)
         {
+            var singleHeaders = new Dictionary<string, WorksheetRuntimeColumn>(StringComparer.Ordinal);
+            var activityHeaders = new Dictionary<string, WorksheetRuntimeColumn>(StringComparer.Ordinal);
+
             foreach (var mapping in mappings)
             {
                 if (mapping == null)
@@ -93,58 +93,120 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 var currentSingle = valueAccessor.GetValue(definition, mapping, FieldMappingSemanticRole.CurrentSingleHeaderText);
                 var currentParentText = valueAccessor.GetValue(definition, mapping, FieldMappingSemanticRole.CurrentParentHeaderText);
                 var currentChildText = valueAccessor.GetValue(definition, mapping, FieldMappingSemanticRole.CurrentChildHeaderText);
-
-                if (headerRowCount <= 1)
+                var template = new WorksheetRuntimeColumn
                 {
-                    if (IsSingleHeader(headerType) &&
-                        string.Equals(topText, currentSingle, StringComparison.Ordinal))
+                    ApiFieldKey = apiFieldKey,
+                    HeaderType = headerType,
+                    DisplayText = currentSingle,
+                    ParentDisplayText = currentParentText,
+                    ChildDisplayText = currentChildText,
+                    IsIdColumn = valueAccessor.GetBoolean(definition, mapping, FieldMappingSemanticRole.IsIdColumn),
+                };
+
+                if (IsSingleHeader(headerType))
+                {
+                    if (!string.IsNullOrWhiteSpace(currentSingle) && !singleHeaders.ContainsKey(currentSingle))
                     {
-                        return new WorksheetRuntimeColumn
-                        {
-                            ApiFieldKey = apiFieldKey,
-                            HeaderType = headerType,
-                            DisplayText = currentSingle,
-                            ParentDisplayText = string.Empty,
-                            ChildDisplayText = string.Empty,
-                            IsIdColumn = valueAccessor.GetBoolean(definition, mapping, FieldMappingSemanticRole.IsIdColumn),
-                        };
+                        singleHeaders[currentSingle] = template;
                     }
 
                     continue;
                 }
 
-                if (IsSingleHeader(headerType) &&
-                    string.Equals(topText, currentSingle, StringComparison.Ordinal) &&
-                    (string.IsNullOrWhiteSpace(bottomText) || string.Equals(bottomText, topText, StringComparison.Ordinal)))
+                if (string.Equals(headerType, "activityProperty", StringComparison.OrdinalIgnoreCase))
                 {
-                    return new WorksheetRuntimeColumn
+                    var activityKey = BuildActivityKey(currentParentText, currentChildText);
+                    if (!string.IsNullOrWhiteSpace(activityKey) && !activityHeaders.ContainsKey(activityKey))
                     {
-                        ApiFieldKey = apiFieldKey,
-                        HeaderType = headerType,
-                        DisplayText = currentSingle,
-                        ParentDisplayText = string.Empty,
-                        ChildDisplayText = string.Empty,
-                        IsIdColumn = valueAccessor.GetBoolean(definition, mapping, FieldMappingSemanticRole.IsIdColumn),
-                    };
-                }
-
-                if (string.Equals(headerType, "activityProperty", StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(currentParent, currentParentText, StringComparison.Ordinal) &&
-                    string.Equals(bottomText, currentChildText, StringComparison.Ordinal))
-                {
-                    return new WorksheetRuntimeColumn
-                    {
-                        ApiFieldKey = apiFieldKey,
-                        HeaderType = headerType,
-                        DisplayText = currentChildText,
-                        ParentDisplayText = currentParentText,
-                        ChildDisplayText = currentChildText,
-                        IsIdColumn = valueAccessor.GetBoolean(definition, mapping, FieldMappingSemanticRole.IsIdColumn),
-                    };
+                        activityHeaders[activityKey] = template;
+                    }
                 }
             }
 
+            return new HeaderLookup(singleHeaders, activityHeaders);
+        }
+
+        private WorksheetRuntimeColumn FindMatch(
+            HeaderLookup lookup,
+            string topText,
+            string bottomText,
+            string currentParent,
+            int headerRowCount)
+        {
+            if (headerRowCount <= 1)
+            {
+                if (lookup.SingleHeaders.TryGetValue(topText, out var singleHeader))
+                {
+                    return CloneSingleHeader(singleHeader);
+                }
+
+                return null;
+            }
+
+            if (lookup.SingleHeaders.TryGetValue(topText, out var mergedSingleHeader) &&
+                (string.IsNullOrWhiteSpace(bottomText) || string.Equals(bottomText, topText, StringComparison.Ordinal)))
+            {
+                return CloneSingleHeader(mergedSingleHeader);
+            }
+
+            var activityLookupKey = BuildActivityKey(currentParent, bottomText);
+            if (lookup.ActivityHeaders.TryGetValue(activityLookupKey, out var activityHeader))
+            {
+                return CloneActivityHeader(activityHeader);
+            }
+
             return null;
+        }
+
+        private static WorksheetRuntimeColumn CloneSingleHeader(WorksheetRuntimeColumn template)
+        {
+            return new WorksheetRuntimeColumn
+            {
+                ApiFieldKey = template.ApiFieldKey,
+                HeaderType = template.HeaderType,
+                DisplayText = template.DisplayText,
+                ParentDisplayText = string.Empty,
+                ChildDisplayText = string.Empty,
+                IsIdColumn = template.IsIdColumn,
+            };
+        }
+
+        private static WorksheetRuntimeColumn CloneActivityHeader(WorksheetRuntimeColumn template)
+        {
+            return new WorksheetRuntimeColumn
+            {
+                ApiFieldKey = template.ApiFieldKey,
+                HeaderType = template.HeaderType,
+                DisplayText = template.ChildDisplayText,
+                ParentDisplayText = template.ParentDisplayText,
+                ChildDisplayText = template.ChildDisplayText,
+                IsIdColumn = template.IsIdColumn,
+            };
+        }
+
+        private static string BuildActivityKey(string parentText, string childText)
+        {
+            if (string.IsNullOrWhiteSpace(parentText) || string.IsNullOrWhiteSpace(childText))
+            {
+                return string.Empty;
+            }
+
+            return parentText + "\u001f" + childText;
+        }
+
+        private sealed class HeaderLookup
+        {
+            public HeaderLookup(
+                IReadOnlyDictionary<string, WorksheetRuntimeColumn> singleHeaders,
+                IReadOnlyDictionary<string, WorksheetRuntimeColumn> activityHeaders)
+            {
+                SingleHeaders = singleHeaders ?? throw new ArgumentNullException(nameof(singleHeaders));
+                ActivityHeaders = activityHeaders ?? throw new ArgumentNullException(nameof(activityHeaders));
+            }
+
+            public IReadOnlyDictionary<string, WorksheetRuntimeColumn> SingleHeaders { get; }
+
+            public IReadOnlyDictionary<string, WorksheetRuntimeColumn> ActivityHeaders { get; }
         }
 
         private static bool IsSingleHeader(string headerType)
