@@ -240,6 +240,42 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
+        public void ExecuteFullDownloadBeginsAndEndsOneBulkOperation()
+        {
+            var connector = new FakeSystemConnector();
+            var metadataStore = new FakeWorksheetMetadataStore();
+            var binding = new SheetBinding
+            {
+                SheetName = "Sheet1",
+                SystemKey = "current-business-system",
+                ProjectId = "performance",
+                ProjectName = "绩效项目",
+                HeaderStartRow = 3,
+                HeaderRowCount = 2,
+                DataStartRow = 6,
+            };
+            metadataStore.Bindings["Sheet1"] = binding;
+            metadataStore.FieldMappings["Sheet1"] = BuildDefaultMappings("Sheet1");
+            connector.FindResult = new[]
+            {
+                CreateRow("row-1", "张三", "2026-01-02", "2026-01-05"),
+            };
+
+            var (service, grid) = CreateService(connector, metadataStore, new FakeWorksheetSelectionReader());
+            SeedRecognizedHeaders(grid, "Sheet1", binding);
+
+            var plan = InvokePrepare(service, "PrepareFullDownload", "Sheet1");
+
+            Assert.Equal(0, grid.BeginBulkOperationCount);
+            Assert.Equal(0, grid.EndBulkOperationCount);
+
+            InvokeExecute(service, "ExecuteDownload", plan);
+
+            Assert.Equal(1, grid.BeginBulkOperationCount);
+            Assert.Equal(1, grid.EndBulkOperationCount);
+        }
+
+        [Fact]
         public void ExecuteFullDownloadSplitsBatchWritesAcrossNonContiguousManagedColumns()
         {
             var connector = new FakeSystemConnector();
@@ -326,6 +362,41 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Contains(connector.LastBatchSaveChanges, change => change.RowId == "row-1" && change.ApiFieldKey == "start_12345678" && change.NewValue == "2026-01-02");
             Assert.Contains(connector.LastBatchSaveChanges, change => change.RowId == "row-1" && change.ApiFieldKey == "end_12345678" && change.NewValue == "2026-01-05");
             Assert.DoesNotContain(connector.LastBatchSaveChanges, change => string.IsNullOrWhiteSpace(change.RowId));
+        }
+
+        [Fact]
+        public void PrepareFullUploadBeginsAndEndsOneBulkOperation()
+        {
+            var connector = new FakeSystemConnector();
+            var metadataStore = new FakeWorksheetMetadataStore();
+            var binding = new SheetBinding
+            {
+                SheetName = "Sheet1",
+                SystemKey = "current-business-system",
+                ProjectId = "performance",
+                ProjectName = "绩效项目",
+                HeaderStartRow = 3,
+                HeaderRowCount = 2,
+                DataStartRow = 6,
+            };
+            metadataStore.Bindings["Sheet1"] = binding;
+            metadataStore.FieldMappings["Sheet1"] = BuildDefaultMappings("Sheet1");
+
+            var (service, grid) = CreateService(connector, metadataStore, new FakeWorksheetSelectionReader());
+            SeedRecognizedHeaders(grid, "Sheet1", binding);
+            grid.SetCell("Sheet1", 6, 1, "row-1");
+            grid.SetCell("Sheet1", 6, 2, "李四");
+            grid.SetCell("Sheet1", 6, 3, "2026-01-02");
+            grid.SetCell("Sheet1", 6, 4, "2026-01-05");
+
+            Assert.Equal(0, grid.BeginBulkOperationCount);
+            Assert.Equal(0, grid.EndBulkOperationCount);
+
+            var plan = InvokePrepare(service, "PrepareFullUpload", "Sheet1");
+
+            Assert.NotNull(plan);
+            Assert.Equal(1, grid.BeginBulkOperationCount);
+            Assert.Equal(1, grid.EndBulkOperationCount);
         }
 
         [Fact]

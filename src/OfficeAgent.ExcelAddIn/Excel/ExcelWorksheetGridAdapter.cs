@@ -6,7 +6,6 @@ namespace OfficeAgent.ExcelAddIn.Excel
     internal sealed class ExcelWorksheetGridAdapter : IWorksheetGridAdapter
     {
         private readonly ExcelInterop.Application application;
-        private static readonly IDisposable NoOpBulkOperationScope = new NoOpScope();
 
         public ExcelWorksheetGridAdapter(ExcelInterop.Application application)
         {
@@ -15,7 +14,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
 
         public IDisposable BeginBulkOperation()
         {
-            return NoOpBulkOperationScope;
+            return new BulkOperationScope(application);
         }
 
         public string GetCellText(string sheetName, int row, int column)
@@ -347,10 +346,37 @@ namespace OfficeAgent.ExcelAddIn.Excel
             throw new InvalidOperationException($"Worksheet '{sheetName}' was not found.");
         }
 
-        private sealed class NoOpScope : IDisposable
+        private sealed class BulkOperationScope : IDisposable
         {
+            private readonly ExcelInterop.Application application;
+            private readonly bool previousScreenUpdating;
+            private readonly bool previousEnableEvents;
+            private readonly ExcelInterop.XlCalculation previousCalculation;
+            private bool disposed;
+
+            public BulkOperationScope(ExcelInterop.Application application)
+            {
+                this.application = application ?? throw new ArgumentNullException(nameof(application));
+                previousScreenUpdating = application.ScreenUpdating;
+                previousEnableEvents = application.EnableEvents;
+                previousCalculation = application.Calculation;
+
+                application.ScreenUpdating = false;
+                application.EnableEvents = false;
+                application.Calculation = ExcelInterop.XlCalculation.xlCalculationManual;
+            }
+
             public void Dispose()
             {
+                if (disposed)
+                {
+                    return;
+                }
+
+                disposed = true;
+                application.Calculation = previousCalculation;
+                application.EnableEvents = previousEnableEvents;
+                application.ScreenUpdating = previousScreenUpdating;
             }
         }
     }

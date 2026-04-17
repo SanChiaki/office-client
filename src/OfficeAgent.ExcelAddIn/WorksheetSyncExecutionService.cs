@@ -167,7 +167,11 @@ namespace OfficeAgent.ExcelAddIn
         public WorksheetUploadPlan PrepareFullUpload(string sheetName)
         {
             var context = ResolveMatchedSheetContext(sheetName);
-            var changes = ReadAllCurrentCells(sheetName, context.Binding, context.Schema);
+            CellChange[] changes;
+            using (gridAdapter.BeginBulkOperation())
+            {
+                changes = ReadAllCurrentCells(sheetName, context.Binding, context.Schema);
+            }
 
             return new WorksheetUploadPlan
             {
@@ -394,10 +398,10 @@ namespace OfficeAgent.ExcelAddIn
         {
             var binding = plan.Binding;
             var columns = plan.RuntimeColumns ?? Array.Empty<WorksheetRuntimeColumn>();
-            var clearEndRow = Math.Max(gridAdapter.GetLastUsedRow(plan.SheetName), binding.DataStartRow + (plan.Rows?.Count ?? 0) + 10);
 
             using (gridAdapter.BeginBulkOperation())
             {
+                var clearEndRow = Math.Max(gridAdapter.GetLastUsedRow(plan.SheetName), binding.DataStartRow + (plan.Rows?.Count ?? 0) + 10);
                 ClearManagedArea(plan.SheetName, binding, columns, plan.UsesExistingLayout, clearEndRow);
 
                 if (!plan.UsesExistingLayout)
