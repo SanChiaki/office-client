@@ -126,6 +126,48 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
+        public void RefreshActiveProjectFromSheetMetadataSkipsReloadWhenActiveSheetDidNotChange()
+        {
+            var metadataStore = new FakeWorksheetMetadataStore();
+            metadataStore.Bindings["SheetWithBinding"] = new SheetBinding
+            {
+                SheetName = "SheetWithBinding",
+                SystemKey = "current-business-system",
+                ProjectId = "project-2",
+                ProjectName = "项目二",
+            };
+
+            var controller = CreateController(new FakeSystemConnector(), metadataStore, new FakeDialogService(), () => "SheetWithBinding");
+
+            InvokeRefresh(controller);
+            InvokeRefresh(controller);
+
+            Assert.Equal(1, metadataStore.LoadBindingCallCount);
+            Assert.Equal("项目二", ReadActiveProjectDisplayName(controller));
+        }
+
+        [Fact]
+        public void InvalidatingRefreshStateForcesReloadForSameActiveSheet()
+        {
+            var metadataStore = new FakeWorksheetMetadataStore();
+            metadataStore.Bindings["SheetWithBinding"] = new SheetBinding
+            {
+                SheetName = "SheetWithBinding",
+                SystemKey = "current-business-system",
+                ProjectId = "project-2",
+                ProjectName = "项目二",
+            };
+
+            var controller = CreateController(new FakeSystemConnector(), metadataStore, new FakeDialogService(), () => "SheetWithBinding");
+
+            InvokeRefresh(controller);
+            InvokeInvalidateRefreshState(controller);
+            InvokeRefresh(controller);
+
+            Assert.Equal(2, metadataStore.LoadBindingCallCount);
+        }
+
+        [Fact]
         public void RefreshActiveProjectFromSheetMetadataFallsBackToDefaultWhenBindingMissing()
         {
             var metadataStore = new FakeWorksheetMetadataStore();
@@ -241,6 +283,20 @@ namespace OfficeAgent.ExcelAddIn.Tests
             if (method == null)
             {
                 throw new InvalidOperationException("RibbonSyncController.RefreshActiveProjectFromSheetMetadata() was not found.");
+            }
+
+            method.Invoke(controller, null);
+        }
+
+        private static void InvokeInvalidateRefreshState(object controller)
+        {
+            var method = controller.GetType().GetMethod(
+                "InvalidateRefreshState",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+
+            if (method == null)
+            {
+                throw new InvalidOperationException("RibbonSyncController.InvalidateRefreshState() was not found.");
             }
 
             method.Invoke(controller, null);
@@ -388,6 +444,8 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             public Dictionary<string, SheetFieldMappingRow[]> FieldMappings { get; } = new Dictionary<string, SheetFieldMappingRow[]>(StringComparer.OrdinalIgnoreCase);
 
+            public int LoadBindingCallCount { get; private set; }
+
             public SheetBinding LastSavedBinding { get; private set; }
 
             public SheetFieldMappingRow[] LastSavedFieldMappings { get; private set; } = Array.Empty<SheetFieldMappingRow>();
@@ -400,6 +458,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             public SheetBinding LoadBinding(string sheetName)
             {
+                LoadBindingCallCount++;
                 if (!Bindings.TryGetValue(sheetName, out var binding))
                 {
                     throw new InvalidOperationException("No binding.");

@@ -17,6 +17,7 @@ namespace OfficeAgent.ExcelAddIn
         private readonly Func<string> activeSheetNameProvider;
         private readonly WorksheetSyncExecutionService executionService;
         private readonly IRibbonSyncDialogService dialogService;
+        private string lastRefreshedSheetName;
 
         public RibbonSyncController(
             IWorksheetMetadataStore metadataStore,
@@ -92,6 +93,7 @@ namespace OfficeAgent.ExcelAddIn
             var binding = BuildBindingForSelection(sheetName, project);
 
             metadataStore.SaveBinding(binding);
+            lastRefreshedSheetName = sheetName;
             ApplyBindingState(binding);
             TryAutoInitializeCurrentSheet(sheetName, project);
         }
@@ -101,19 +103,32 @@ namespace OfficeAgent.ExcelAddIn
             var sheetName = activeSheetNameProvider.Invoke() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(sheetName))
             {
+                lastRefreshedSheetName = string.Empty;
                 ClearActiveProjectState();
+                return;
+            }
+
+            if (string.Equals(lastRefreshedSheetName, sheetName, StringComparison.OrdinalIgnoreCase))
+            {
                 return;
             }
 
             try
             {
                 var binding = metadataStore.LoadBinding(sheetName);
+                lastRefreshedSheetName = sheetName;
                 ApplyBindingState(binding);
             }
             catch (InvalidOperationException)
             {
+                lastRefreshedSheetName = sheetName;
                 ClearActiveProjectState();
             }
+        }
+
+        internal void InvalidateRefreshState()
+        {
+            lastRefreshedSheetName = string.Empty;
         }
 
         public void ExecuteFullDownload()
