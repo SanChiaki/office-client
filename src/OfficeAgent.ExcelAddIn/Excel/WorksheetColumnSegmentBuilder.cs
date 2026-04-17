@@ -18,19 +18,15 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 return Array.Empty<WorksheetColumnSegment>();
             }
 
-            var deduplicated = new List<WorksheetRuntimeColumn> { ordered[0] };
             for (var index = 1; index < ordered.Length; index++)
             {
                 var column = ordered[index];
-                if (column.ColumnIndex == deduplicated[deduplicated.Count - 1].ColumnIndex)
+                if (column.ColumnIndex == ordered[index - 1].ColumnIndex)
                 {
-                    continue;
+                    throw new InvalidOperationException(
+                        $"Worksheet runtime columns contain duplicate ColumnIndex value: {column.ColumnIndex}.");
                 }
-
-                deduplicated.Add(column);
             }
-
-            ordered = deduplicated.ToArray();
 
             var segments = new List<WorksheetColumnSegment>();
             var currentColumns = new List<WorksheetRuntimeColumn> { ordered[0] };

@@ -64,6 +64,9 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 return new object[0, 0];
             }
 
+            var rowCount = endRow - startRow + 1;
+            var columnCount = endColumn - startColumn + 1;
+
             var worksheet = GetWorksheet(sheetName);
             var range = worksheet.Range[
                 worksheet.Cells[startRow, startColumn],
@@ -73,7 +76,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 return new object[0, 0];
             }
 
-            return NormalizeToObjectMatrix(range.Value2);
+            return NormalizeToObjectMatrix(range.Value2, rowCount, columnCount);
         }
 
         public string[,] ReadRangeNumberFormats(string sheetName, int startRow, int endRow, int startColumn, int endColumn)
@@ -82,6 +85,9 @@ namespace OfficeAgent.ExcelAddIn.Excel
             {
                 return new string[0, 0];
             }
+
+            var rowCount = endRow - startRow + 1;
+            var columnCount = endColumn - startColumn + 1;
 
             var worksheet = GetWorksheet(sheetName);
             var range = worksheet.Range[
@@ -92,7 +98,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 return new string[0, 0];
             }
 
-            return NormalizeToStringMatrix(range.NumberFormat);
+            return NormalizeToStringMatrix(range.NumberFormat, rowCount, columnCount);
         }
 
         public void ClearRange(string sheetName, int startRow, int endRow, int startColumn, int endColumn)
@@ -173,13 +179,18 @@ namespace OfficeAgent.ExcelAddIn.Excel
             range.Clear();
         }
 
-        private static object[,] NormalizeToObjectMatrix(object value)
+        private static object[,] NormalizeToObjectMatrix(object value, int requestedRowCount, int requestedColumnCount)
         {
+            if (requestedRowCount <= 0 || requestedColumnCount <= 0)
+            {
+                return new object[0, 0];
+            }
+
+            var normalized = new object[requestedRowCount, requestedColumnCount];
             if (value is object[,] matrix)
             {
-                var rowCount = matrix.GetLength(0);
-                var columnCount = matrix.GetLength(1);
-                var normalized = new object[rowCount, columnCount];
+                var rowCount = Math.Min(matrix.GetLength(0), requestedRowCount);
+                var columnCount = Math.Min(matrix.GetLength(1), requestedColumnCount);
                 var rowLowerBound = matrix.GetLowerBound(0);
                 var columnLowerBound = matrix.GetLowerBound(1);
 
@@ -194,16 +205,29 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 return normalized;
             }
 
-            return new object[1, 1] { { value } };
+            for (var row = 0; row < requestedRowCount; row++)
+            {
+                for (var column = 0; column < requestedColumnCount; column++)
+                {
+                    normalized[row, column] = value;
+                }
+            }
+
+            return normalized;
         }
 
-        private static string[,] NormalizeToStringMatrix(object value)
+        private static string[,] NormalizeToStringMatrix(object value, int requestedRowCount, int requestedColumnCount)
         {
+            if (requestedRowCount <= 0 || requestedColumnCount <= 0)
+            {
+                return new string[0, 0];
+            }
+
+            var normalized = new string[requestedRowCount, requestedColumnCount];
             if (value is object[,] matrix)
             {
-                var rowCount = matrix.GetLength(0);
-                var columnCount = matrix.GetLength(1);
-                var normalized = new string[rowCount, columnCount];
+                var rowCount = Math.Min(matrix.GetLength(0), requestedRowCount);
+                var columnCount = Math.Min(matrix.GetLength(1), requestedColumnCount);
                 var rowLowerBound = matrix.GetLowerBound(0);
                 var columnLowerBound = matrix.GetLowerBound(1);
 
@@ -218,7 +242,16 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 return normalized;
             }
 
-            return new string[1, 1] { { Convert.ToString(value) ?? string.Empty } };
+            var scalar = Convert.ToString(value) ?? string.Empty;
+            for (var row = 0; row < requestedRowCount; row++)
+            {
+                for (var column = 0; column < requestedColumnCount; column++)
+                {
+                    normalized[row, column] = scalar;
+                }
+            }
+
+            return normalized;
         }
 
         private ExcelInterop.Worksheet GetWorksheet(string sheetName)

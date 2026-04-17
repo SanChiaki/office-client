@@ -47,27 +47,21 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
-        public void BuildDeduplicatesDuplicateColumnIndexesKeepingFirstAfterOrdering()
+        public void BuildThrowsWhenDuplicateColumnIndexesExist()
         {
             var builder = CreateBuilder();
             var firstColumnTwo = new WorksheetRuntimeColumn { ColumnIndex = 2, ApiFieldKey = "owner_name" };
             var secondColumnTwo = new WorksheetRuntimeColumn { ColumnIndex = 2, ApiFieldKey = "owner_alias" };
-            var segments = Build(builder, new[]
+            var error = Assert.Throws<TargetInvocationException>(() => Build(builder, new[]
             {
                 new WorksheetRuntimeColumn { ColumnIndex = 3, ApiFieldKey = "end_12345678" },
                 firstColumnTwo,
                 new WorksheetRuntimeColumn { ColumnIndex = 1, ApiFieldKey = "row_id", IsIdColumn = true },
                 secondColumnTwo,
-            });
+            }));
 
-            Assert.Single(segments);
-            var segment = segments[0];
-            Assert.Equal(1, GetStartColumn(segment));
-            Assert.Equal(3, GetEndColumn(segment));
-
-            var columns = GetColumns(segment);
-            Assert.Equal(new[] { 1, 2, 3 }, columns.Select(column => column.ColumnIndex).ToArray());
-            Assert.Same(firstColumnTwo, columns[1]);
+            var actual = Assert.IsType<InvalidOperationException>(error.InnerException);
+            Assert.Contains("ColumnIndex", actual.Message);
         }
 
         private static object CreateBuilder()
