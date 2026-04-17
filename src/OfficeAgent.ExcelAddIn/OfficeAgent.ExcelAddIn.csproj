@@ -188,6 +188,8 @@
     <Compile Include="Excel\WorksheetHeaderMatcher.cs" />
     <Compile Include="Excel\WorksheetSchemaLayoutService.cs" />
     <Compile Include="Excel\WorksheetSelectionResolver.cs" />
+    <Compile Include="Excel\WorksheetColumnSegment.cs" />
+    <Compile Include="Excel\WorksheetColumnSegmentBuilder.cs" />
     <Compile Include="SsoLoginPopup.cs" />
     <Compile Include="TaskPane\TaskPaneController.cs" />
     <Compile Include="TaskPane\TaskPaneHostControl.cs">
