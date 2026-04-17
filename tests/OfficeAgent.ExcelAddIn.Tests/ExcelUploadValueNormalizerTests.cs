@@ -35,6 +35,24 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.False(InvokeTryNormalize(normalizer, 123d, "000000", out _));
         }
 
+        [Fact]
+        public void TryNormalizeReturnsFalseForUppercaseDateTokens()
+        {
+            var normalizer = CreateNormalizer();
+
+            Assert.False(InvokeTryNormalize(normalizer, 46024d, "YYYY/MM/DD", out _));
+        }
+
+        [Fact]
+        public void TryNormalizeReturnsEmptyStringWhenDisplayTextFallbackIsRequired()
+        {
+            var normalizer = CreateNormalizer();
+
+            Assert.False(InvokeTryNormalize(normalizer, 0.25d, "0%", out var normalized));
+            Assert.NotNull(normalized);
+            Assert.Equal(string.Empty, normalized);
+        }
+
         private static object CreateNormalizer()
         {
             var normalizerType = Assembly.LoadFrom(ResolveAddInAssemblyPath())

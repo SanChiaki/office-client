@@ -29,7 +29,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
             {
                 if (RequiresDisplayTextFallback(numberFormat))
                 {
-                    normalized = null;
+                    normalized = string.Empty;
                     return false;
                 }
 
@@ -45,7 +45,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
 
         private static bool RequiresDisplayTextFallback(string numberFormat)
         {
-            var format = numberFormat ?? string.Empty;
+            var format = (numberFormat ?? string.Empty).ToLowerInvariant();
             if (string.IsNullOrWhiteSpace(format) || string.Equals(format, "General", StringComparison.OrdinalIgnoreCase))
             {
                 return false;
