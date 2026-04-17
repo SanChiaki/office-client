@@ -273,6 +273,8 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             Assert.Equal(1, grid.BeginBulkOperationCount);
             Assert.Equal(1, grid.EndBulkOperationCount);
+            Assert.Contains(grid.LastUsedRowCalls, call => call.SheetName == "Sheet1" && call.WasInsideBulkOperation);
+            Assert.Contains(grid.WriteRangeCalls, call => call.SheetName == "Sheet1" && call.WasInsideBulkOperation);
         }
 
         [Fact]
@@ -397,6 +399,8 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.NotNull(plan);
             Assert.Equal(1, grid.BeginBulkOperationCount);
             Assert.Equal(1, grid.EndBulkOperationCount);
+            Assert.Contains(grid.ReadRangeCalls, call => call.MethodName == "ReadRangeValues" && call.WasInsideBulkOperation);
+            Assert.Contains(grid.ReadRangeCalls, call => call.MethodName == "ReadRangeNumberFormats" && call.WasInsideBulkOperation);
         }
 
         [Fact]
@@ -1151,6 +1155,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
         private sealed class FakeWorksheetGridAdapter : RealProxy
         {
             private readonly Dictionary<string, FakeCell> cells = new Dictionary<string, FakeCell>(StringComparer.OrdinalIgnoreCase);
+            private int bulkOperationDepth;
 
             public FakeWorksheetGridAdapter(Type interfaceType)
                 : base(interfaceType)
@@ -1166,6 +1171,8 @@ namespace OfficeAgent.ExcelAddIn.Tests
             public List<ReadRangeRecord> ReadRangeCalls { get; } = new List<ReadRangeRecord>();
 
             public List<GetCellTextRecord> GetCellTextCalls { get; } = new List<GetCellTextRecord>();
+
+            public List<LastUsedRowRecord> LastUsedRowCalls { get; } = new List<LastUsedRowRecord>();
 
             public int BeginBulkOperationCount { get; private set; }
 
@@ -1244,6 +1251,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
                                 EndRow = endRow,
                                 StartColumn = startColumn,
                                 EndColumn = endColumn,
+                                WasInsideBulkOperation = IsBulkOperationActive,
                             });
                             return new ReturnMessage(
                                 ReadRangeValues(sheetName, startRow, endRow, startColumn, endColumn),
@@ -1267,6 +1275,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
                                 EndRow = endRow,
                                 StartColumn = startColumn,
                                 EndColumn = endColumn,
+                                WasInsideBulkOperation = IsBulkOperationActive,
                             });
                             return new ReturnMessage(
                                 ReadRangeNumberFormats(sheetName, startRow, endRow, startColumn, endColumn),
@@ -1277,8 +1286,17 @@ namespace OfficeAgent.ExcelAddIn.Tests
                         }
                     case "BeginBulkOperation":
                         BeginBulkOperationCount++;
+                        bulkOperationDepth++;
                         return new ReturnMessage(
-                            new DelegateDisposeScope(() => EndBulkOperationCount++),
+                            new DelegateDisposeScope(() =>
+                            {
+                                if (bulkOperationDepth > 0)
+                                {
+                                    bulkOperationDepth--;
+                                }
+
+                                EndBulkOperationCount++;
+                            }),
                             null,
                             0,
                             call.LogicalCallContext,
@@ -1363,6 +1381,12 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             private int GetLastUsedRow(string sheetName)
             {
+                LastUsedRowCalls.Add(new LastUsedRowRecord
+                {
+                    SheetName = sheetName,
+                    WasInsideBulkOperation = IsBulkOperationActive,
+                });
+
                 var prefix = sheetName + "|";
                 var rows = cells.Keys
                     .Where(key => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
@@ -1391,6 +1415,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
                     StartRow = startRow,
                     StartColumn = startColumn,
                     Values = values,
+                    WasInsideBulkOperation = IsBulkOperationActive,
                 });
 
                 if (values == null)
@@ -1494,6 +1519,8 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 return string.Join("|", sheetName ?? string.Empty, row, column);
             }
 
+            private bool IsBulkOperationActive => bulkOperationDepth > 0;
+
             private sealed class FakeCell
             {
                 public string Text { get; set; } = string.Empty;
@@ -1528,6 +1555,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
             public int StartRow { get; set; }
             public int StartColumn { get; set; }
             public object[,] Values { get; set; }
+            public bool WasInsideBulkOperation { get; set; }
         }
 
         public sealed class ReadRangeRecord
@@ -1538,6 +1566,13 @@ namespace OfficeAgent.ExcelAddIn.Tests
             public int EndRow { get; set; }
             public int StartColumn { get; set; }
             public int EndColumn { get; set; }
+            public bool WasInsideBulkOperation { get; set; }
+        }
+
+        public sealed class LastUsedRowRecord
+        {
+            public string SheetName { get; set; }
+            public bool WasInsideBulkOperation { get; set; }
         }
 
         public sealed class GetCellTextRecord
