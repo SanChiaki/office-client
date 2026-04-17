@@ -98,7 +98,18 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 return new string[0, 0];
             }
 
-            return NormalizeToStringMatrix(range.NumberFormat, rowCount, columnCount);
+            object rangeNumberFormat = range.NumberFormat;
+            Func<int, int, object> readCellNumberFormat = (rowOffset, columnOffset) =>
+            {
+                var cell = worksheet.Cells[startRow + rowOffset, startColumn + columnOffset] as ExcelInterop.Range;
+                return cell?.NumberFormat;
+            };
+
+            return NormalizeNumberFormatsWithFallback(
+                rangeNumberFormat,
+                rowCount,
+                columnCount,
+                readCellNumberFormat);
         }
 
         public void ClearRange(string sheetName, int startRow, int endRow, int startColumn, int endColumn)
@@ -252,6 +263,62 @@ namespace OfficeAgent.ExcelAddIn.Excel
             }
 
             return normalized;
+        }
+
+        private static string[,] NormalizeNumberFormatsWithFallback(
+            object rangeNumberFormat,
+            int requestedRowCount,
+            int requestedColumnCount,
+            Func<int, int, object> readCellNumberFormat)
+        {
+            if (requestedRowCount <= 0 || requestedColumnCount <= 0)
+            {
+                return new string[0, 0];
+            }
+
+            if (rangeNumberFormat == null || rangeNumberFormat == DBNull.Value)
+            {
+                return ReadPerCellNumberFormats(requestedRowCount, requestedColumnCount, readCellNumberFormat);
+            }
+
+            if (rangeNumberFormat is object[,] matrix)
+            {
+                if (matrix.GetLength(0) < requestedRowCount || matrix.GetLength(1) < requestedColumnCount)
+                {
+                    return ReadPerCellNumberFormats(requestedRowCount, requestedColumnCount, readCellNumberFormat);
+                }
+
+                return NormalizeToStringMatrix(matrix, requestedRowCount, requestedColumnCount);
+            }
+
+            if (rangeNumberFormat is Array)
+            {
+                return ReadPerCellNumberFormats(requestedRowCount, requestedColumnCount, readCellNumberFormat);
+            }
+
+            return NormalizeToStringMatrix(rangeNumberFormat, requestedRowCount, requestedColumnCount);
+        }
+
+        private static string[,] ReadPerCellNumberFormats(
+            int requestedRowCount,
+            int requestedColumnCount,
+            Func<int, int, object> readCellNumberFormat)
+        {
+            var formats = new string[requestedRowCount, requestedColumnCount];
+            if (readCellNumberFormat == null)
+            {
+                return formats;
+            }
+
+            for (var rowOffset = 0; rowOffset < requestedRowCount; rowOffset++)
+            {
+                for (var columnOffset = 0; columnOffset < requestedColumnCount; columnOffset++)
+                {
+                    formats[rowOffset, columnOffset] = Convert.ToString(readCellNumberFormat(rowOffset, columnOffset)) ?? string.Empty;
+                }
+            }
+
+            return formats;
         }
 
         private ExcelInterop.Worksheet GetWorksheet(string sheetName)

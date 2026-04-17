@@ -73,6 +73,43 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Equal(new[,] { { "General", "yyyy-mm-dd" }, { "0.00", "@" } }, result);
         }
 
+        [Fact]
+        public void NormalizeNumberFormatsWithFallbackReadsPerCellWhenRangeNumberFormatIsNull()
+        {
+            var method = GetNormalizeNumberFormatsWithFallbackMethod();
+            var calls = 0;
+            Func<int, int, object> readCellFormat = (rowOffset, columnOffset) =>
+            {
+                calls++;
+                return $"fmt-{rowOffset + 1}-{columnOffset + 1}";
+            };
+
+            var result = (string[,])method.Invoke(null, new object[] { null, 2, 3, readCellFormat });
+
+            Assert.Equal(6, calls);
+            Assert.Equal(new[,] {
+                { "fmt-1-1", "fmt-1-2", "fmt-1-3" },
+                { "fmt-2-1", "fmt-2-2", "fmt-2-3" },
+            }, result);
+        }
+
+        [Fact]
+        public void NormalizeNumberFormatsWithFallbackUsesRangeScalarWhenAvailable()
+        {
+            var method = GetNormalizeNumberFormatsWithFallbackMethod();
+            var calls = 0;
+            Func<int, int, object> readCellFormat = (rowOffset, columnOffset) =>
+            {
+                calls++;
+                return "should-not-read-cell";
+            };
+
+            var result = (string[,])method.Invoke(null, new object[] { "General", 2, 2, readCellFormat });
+
+            Assert.Equal(0, calls);
+            Assert.Equal(new[,] { { "General", "General" }, { "General", "General" } }, result);
+        }
+
         private static MethodInfo GetNormalizeToObjectMatrixMethod()
         {
             var method = GetGridAdapterType().GetMethod(
@@ -95,6 +132,18 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 modifiers: null);
 
             return method ?? throw new InvalidOperationException("NormalizeToStringMatrix(object,int,int) was not found.");
+        }
+
+        private static MethodInfo GetNormalizeNumberFormatsWithFallbackMethod()
+        {
+            var method = GetGridAdapterType().GetMethod(
+                "NormalizeNumberFormatsWithFallback",
+                BindingFlags.NonPublic | BindingFlags.Static,
+                binder: null,
+                types: new[] { typeof(object), typeof(int), typeof(int), typeof(Func<int, int, object>) },
+                modifiers: null);
+
+            return method ?? throw new InvalidOperationException("NormalizeNumberFormatsWithFallback was not found.");
         }
 
         private static Type GetGridAdapterType()
