@@ -182,15 +182,25 @@ namespace OfficeAgent.ExcelAddIn.Excel
             cells?.ClearContents();
 
             var rendered = serializer.Render(sections);
-            for (var rowIndex = 0; rowIndex < rendered.Length; rowIndex++)
+            if (rendered.Length == 0)
             {
-                var values = rendered[rowIndex] ?? Array.Empty<string>();
-                for (var columnIndex = 0; columnIndex < values.Length; columnIndex++)
-                {
-                    var cell = worksheet.Cells[rowIndex + 1, columnIndex + 1] as ExcelInterop.Range;
-                    cell.Value2 = values[columnIndex];
-                }
+                return;
             }
+
+            var objectValues = ToObjectMatrix(rendered, out var columnCount);
+            if (columnCount <= 0)
+            {
+                return;
+            }
+
+            var startCell = worksheet.Cells[1, 1] as ExcelInterop.Range;
+            var writeTarget = startCell?.Resize[rendered.Length, columnCount] as ExcelInterop.Range;
+            if (writeTarget == null)
+            {
+                return;
+            }
+
+            writeTarget.Value2 = objectValues;
         }
 
         private static string[][] ReadUsedRows(ExcelInterop.Worksheet worksheet)
@@ -251,6 +261,37 @@ namespace OfficeAgent.ExcelAddIn.Excel
             }
 
             return array.GetValue(rowIndex, columnIndex);
+        }
+
+        private static object[,] ToObjectMatrix(string[][] rows, out int columnCount)
+        {
+            columnCount = 0;
+            if (rows == null || rows.Length == 0)
+            {
+                return new object[0, 0];
+            }
+
+            for (var rowIndex = 0; rowIndex < rows.Length; rowIndex++)
+            {
+                columnCount = Math.Max(columnCount, rows[rowIndex]?.Length ?? 0);
+            }
+
+            if (columnCount == 0)
+            {
+                return new object[rows.Length, 0];
+            }
+
+            var values = new object[rows.Length, columnCount];
+            for (var rowIndex = 0; rowIndex < rows.Length; rowIndex++)
+            {
+                var row = rows[rowIndex] ?? Array.Empty<string>();
+                for (var columnIndex = 0; columnIndex < row.Length; columnIndex++)
+                {
+                    values[rowIndex, columnIndex] = row[columnIndex];
+                }
+            }
+
+            return values;
         }
     }
 }

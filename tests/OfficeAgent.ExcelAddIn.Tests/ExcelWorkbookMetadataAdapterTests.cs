@@ -76,6 +76,41 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
+        public void WriteTableCanRewriteMetadataSheetUsingRangeValue2WithoutDirectCellWrites()
+        {
+            var addInAssembly = Assembly.LoadFrom(ResolveAddInAssemblyPath());
+            var excelAssembly = LoadExcelInteropAssembly();
+            var worksheetType = excelAssembly.GetType("Microsoft.Office.Interop.Excel.Worksheet", throwOnError: true);
+            var sheetsType = excelAssembly.GetType("Microsoft.Office.Interop.Excel.Sheets", throwOnError: true);
+            var workbookType = excelAssembly.GetType("Microsoft.Office.Interop.Excel.Workbook", throwOnError: true);
+            var applicationType = excelAssembly.GetType("Microsoft.Office.Interop.Excel.Application", throwOnError: true);
+            var rangeType = excelAssembly.GetType("Microsoft.Office.Interop.Excel.Range", throwOnError: true);
+
+            var application = new LayoutAwareFakeExcelApplication(applicationType, workbookType, sheetsType, worksheetType, rangeType);
+            var adapterType = addInAssembly.GetType("OfficeAgent.ExcelAddIn.Excel.ExcelWorkbookMetadataAdapter", throwOnError: true);
+            var adapter = Activator.CreateInstance(adapterType, application.GetTransparentProxy());
+
+            application.CreateWorksheet("_Settings");
+            application.MetadataSheet.ThrowOnDirectCellWrites = true;
+
+            adapterType.GetMethod("WriteTable").Invoke(adapter, new object[]
+            {
+                "SheetFieldMappings",
+                new[] { "SheetName", "HeaderId", "ApiFieldKey" },
+                new[]
+                {
+                    new[] { "Sheet1", "row_id", "row_id" },
+                    new[] { "Sheet1", "owner_name", "owner_name" },
+                },
+            });
+
+            Assert.Equal(1, application.MetadataSheet.RangeValue2WriteCount);
+            Assert.Equal("SheetFieldMappings", application.MetadataSheet.GetCell(1, 1));
+            Assert.Equal("HeaderId", application.MetadataSheet.GetCell(2, 2));
+            Assert.Equal("owner_name", application.MetadataSheet.GetCell(4, 2));
+        }
+
+        [Fact]
         public void ReadTableReadsRowsBackFromTitledSections()
         {
             var addInAssembly = Assembly.LoadFrom(ResolveAddInAssemblyPath());
@@ -377,7 +412,11 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             public bool ThrowOnDirectCellReads { get; set; }
 
+            public bool ThrowOnDirectCellWrites { get; set; }
+
             public int UsedRangeValue2ReadCount { get; private set; }
+
+            public int RangeValue2WriteCount { get; private set; }
 
             public void SetCell(int row, int column, string value)
             {
@@ -434,6 +473,38 @@ namespace OfficeAgent.ExcelAddIn.Tests
             public void ClearAllCells()
             {
                 cells.Clear();
+            }
+
+            public void SetRangeValues(int startRow, int startColumn, object value, int rowCount, int columnCount)
+            {
+                RangeValue2WriteCount++;
+                if (value is Array matrix && matrix.Rank == 2)
+                {
+                    var rowLowerBound = matrix.GetLowerBound(0);
+                    var columnLowerBound = matrix.GetLowerBound(1);
+                    for (var rowOffset = 0; rowOffset < rowCount; rowOffset++)
+                    {
+                        for (var columnOffset = 0; columnOffset < columnCount; columnOffset++)
+                        {
+                            var cellValue = matrix.GetValue(rowOffset + rowLowerBound, columnOffset + columnLowerBound);
+                            SetCell(
+                                startRow + rowOffset,
+                                startColumn + columnOffset,
+                                Convert.ToString(cellValue) ?? string.Empty);
+                        }
+                    }
+
+                    return;
+                }
+
+                var scalarValue = Convert.ToString(value) ?? string.Empty;
+                for (var rowOffset = 0; rowOffset < rowCount; rowOffset++)
+                {
+                    for (var columnOffset = 0; columnOffset < columnCount; columnOffset++)
+                    {
+                        SetCell(startRow + rowOffset, startColumn + columnOffset, scalarValue);
+                    }
+                }
             }
 
             public (int FirstRow, int RowCount, int ColumnCount)? GetUsedRange()
@@ -512,6 +583,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
         {
             CellCollection,
             Cell,
+            Block,
             UsedRange,
             Rows,
             Columns,
@@ -556,6 +628,8 @@ namespace OfficeAgent.ExcelAddIn.Tests
                     "get_Item" => HandleGetItem(call),
                     "get__Default" => HandleGetItem(call),
                     "Item" => HandleGetItem(call),
+                    "get_Resize" => HandleResize(call),
+                    "Resize" => HandleResize(call),
                     "get_Value2" => HandleGetValue2(call),
                     "set_Value2" => HandleSetValue(call),
                     "ClearContents" => HandleClearContents(call),
@@ -595,6 +669,26 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 return new ReturnMessage(cell.GetTransparentProxy(), null, 0, call.LogicalCallContext, call);
             }
 
+            private IMessage HandleResize(IMethodCallMessage call)
+            {
+                if (kind != LayoutAwareFakeExcelRangeKind.Cell && kind != LayoutAwareFakeExcelRangeKind.Block)
+                {
+                    throw new NotSupportedException(call.MethodName + ":" + kind);
+                }
+
+                var rowCount = call.InArgCount >= 1 ? Convert.ToInt32(call.InArgs[0]) : 1;
+                var columnCount = call.InArgCount >= 2 ? Convert.ToInt32(call.InArgs[1]) : 1;
+                var resized = new LayoutAwareFakeExcelRange(
+                    rangeType,
+                    worksheet,
+                    LayoutAwareFakeExcelRangeKind.Block,
+                    row: row,
+                    column: column,
+                    count: rowCount,
+                    otherCount: columnCount);
+                return new ReturnMessage(resized.GetTransparentProxy(), null, 0, call.LogicalCallContext, call);
+            }
+
             private IMessage HandleGetValue2(IMethodCallMessage call)
             {
                 object value;
@@ -606,6 +700,8 @@ namespace OfficeAgent.ExcelAddIn.Tests
                     case LayoutAwareFakeExcelRangeKind.UsedRange:
                         value = worksheet.GetUsedRangeValue2();
                         break;
+                    case LayoutAwareFakeExcelRangeKind.Block:
+                        throw new NotSupportedException(call.MethodName + ":" + kind);
                     default:
                         throw new NotSupportedException(call.MethodName + ":" + kind);
                 }
@@ -615,6 +711,17 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             private IMessage HandleSetValue(IMethodCallMessage call)
             {
+                if (kind == LayoutAwareFakeExcelRangeKind.Block)
+                {
+                    worksheet.SetRangeValues(row, column, call.InArgs[0], count, otherCount);
+                    return new ReturnMessage(null, null, 0, call.LogicalCallContext, call);
+                }
+
+                if (worksheet.ThrowOnDirectCellWrites)
+                {
+                    throw new InvalidOperationException("Direct cell writes are disabled for this test.");
+                }
+
                 worksheet.SetCell(row, column, Convert.ToString(call.InArgs[0]) ?? string.Empty);
                 return new ReturnMessage(null, null, 0, call.LogicalCallContext, call);
             }
