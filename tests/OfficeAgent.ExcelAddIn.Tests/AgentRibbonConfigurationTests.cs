@@ -223,6 +223,24 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
+        public void ProjectSelectionRestoresControllerDisplayForBlankOrUnknownTextViaWrapper()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            var methodStart = ribbonCodeText.IndexOf("private void ProjectDropDown_TextChanged(object sender, RibbonControlEventArgs e)", StringComparison.Ordinal);
+            var nextMethodStart = ribbonCodeText.IndexOf("private void InitializeSheetButton_Click", methodStart, StringComparison.Ordinal);
+
+            Assert.True(methodStart >= 0);
+            Assert.True(nextMethodStart > methodStart);
+
+            var methodBody = ribbonCodeText.Substring(methodStart, nextMethodStart - methodStart);
+            Assert.Contains("RestoreProjectDropDownFromController();", methodBody, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RibbonLoadDoesNotPreloadProjectListBeforeUserOpensSelector()
         {
             var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(

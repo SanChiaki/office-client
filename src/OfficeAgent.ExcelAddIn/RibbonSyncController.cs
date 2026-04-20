@@ -261,7 +261,9 @@ namespace OfficeAgent.ExcelAddIn
         {
             ActiveProjectId = binding?.ProjectId ?? string.Empty;
             ActiveSystemKey = binding?.SystemKey ?? string.Empty;
-            ActiveProjectDisplayName = binding?.ProjectName ?? string.Empty;
+            ActiveProjectDisplayName = string.IsNullOrWhiteSpace(binding?.ProjectName)
+                ? string.Empty
+                : binding.ProjectName;
             OnActiveProjectChanged();
         }
 

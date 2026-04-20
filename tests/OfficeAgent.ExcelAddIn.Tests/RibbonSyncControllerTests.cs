@@ -285,6 +285,28 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Equal(string.Empty, ReadActiveProjectId(controller));
         }
 
+        [Fact]
+        public void RefreshActiveProjectFromSheetMetadataWithBlankProjectNameFallsBackToProjectIdLabel()
+        {
+            var metadataStore = new FakeWorksheetMetadataStore();
+            metadataStore.Bindings["SheetWithBinding"] = new SheetBinding
+            {
+                SheetName = "SheetWithBinding",
+                SystemKey = "current-business-system",
+                ProjectId = "project-2",
+                ProjectName = "   ",
+            };
+
+            var controller = CreateController(new FakeSystemConnector(), metadataStore, new FakeDialogService(), () => "SheetWithBinding");
+            InvokeRefresh(controller);
+
+            Assert.Equal(string.Empty, ReadActiveProjectDisplayName(controller));
+            Assert.Equal("project-2", ReadActiveProjectId(controller));
+            Assert.Equal(
+                "project-2",
+                InvokeFormatProjectDropDownLabel(ReadActiveProjectId(controller), ReadActiveProjectDisplayName(controller)));
+        }
+
         private static object CreateController(
             FakeSystemConnector connector,
             FakeWorksheetMetadataStore metadataStore,
@@ -451,6 +473,21 @@ namespace OfficeAgent.ExcelAddIn.Tests
                     "bin",
                     "Debug",
                     "OfficeAgent.ExcelAddIn.dll"));
+        }
+
+        private static string InvokeFormatProjectDropDownLabel(string projectId, string displayName)
+        {
+            var addInAssembly = Assembly.LoadFrom(ResolveAddInAssemblyPath());
+            var ribbonType = addInAssembly.GetType("OfficeAgent.ExcelAddIn.AgentRibbon", throwOnError: true);
+            var formatMethod = ribbonType.GetMethod(
+                "FormatProjectDropDownLabel",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            if (formatMethod == null)
+            {
+                throw new InvalidOperationException("AgentRibbon.FormatProjectDropDownLabel(string, string) was not found.");
+            }
+
+            return (string)formatMethod.Invoke(null, new object[] { projectId, displayName });
         }
 
         private sealed class FakeSystemConnector : ISystemConnector

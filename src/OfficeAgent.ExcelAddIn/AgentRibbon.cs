@@ -96,10 +96,15 @@ namespace OfficeAgent.ExcelAddIn
                     var targetKey = ProjectSelectionKey.Build(syncController.ActiveSystemKey, syncController.ActiveProjectId);
                     if (!projectLabelsByKey.TryGetValue(targetKey, out text))
                     {
-                        text = syncController.ActiveProjectDisplayName;
+                        text = FormatProjectDropDownLabel(syncController.ActiveProjectId, syncController.ActiveProjectDisplayName);
                     }
                 }
                 else
+                {
+                    text = "先选择项目";
+                }
+
+                if (string.IsNullOrWhiteSpace(text))
                 {
                     text = "先选择项目";
                 }
@@ -247,9 +252,7 @@ namespace OfficeAgent.ExcelAddIn
 
         private string CreateProjectDropDownLabel(ProjectOption project, ISet<string> usedLabels)
         {
-            var baseLabel = string.IsNullOrWhiteSpace(project?.DisplayName)
-                ? project?.ProjectId ?? string.Empty
-                : project.DisplayName;
+            var baseLabel = FormatProjectDropDownLabel(project?.ProjectId ?? string.Empty, project?.DisplayName ?? string.Empty);
             var candidate = baseLabel;
             if (usedLabels.Contains(candidate))
             {
@@ -258,6 +261,24 @@ namespace OfficeAgent.ExcelAddIn
 
             usedLabels.Add(candidate);
             return candidate;
+        }
+
+        private static string FormatProjectDropDownLabel(string projectId, string displayName)
+        {
+            var normalizedProjectId = projectId?.Trim() ?? string.Empty;
+            var normalizedDisplayName = displayName?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(normalizedProjectId))
+            {
+                return normalizedDisplayName;
+            }
+
+            if (string.IsNullOrWhiteSpace(normalizedDisplayName))
+            {
+                return normalizedProjectId;
+            }
+
+            return normalizedProjectId + "-" + normalizedDisplayName;
         }
 
         private void ProjectDropDown_ItemsLoading(object sender, RibbonControlEventArgs e)
@@ -276,11 +297,13 @@ namespace OfficeAgent.ExcelAddIn
             var selectedText = projectDropDown.Text ?? string.Empty;
             if (string.IsNullOrWhiteSpace(selectedText))
             {
+                RestoreProjectDropDownFromController();
                 return;
             }
 
             if (!projectOptionsByLabel.TryGetValue(selectedText, out var project))
             {
+                RestoreProjectDropDownFromController();
                 return;
             }
 
@@ -293,6 +316,11 @@ namespace OfficeAgent.ExcelAddIn
         }
 
         private void SyncController_ActiveProjectChanged(object sender, EventArgs e)
+        {
+            RefreshProjectDropDownFromController();
+        }
+
+        private void RestoreProjectDropDownFromController()
         {
             RefreshProjectDropDownFromController();
         }
