@@ -20,6 +20,7 @@ namespace OfficeAgent.ExcelAddIn
             new Dictionary<string, string>(StringComparer.Ordinal);
 
         private bool isUpdatingProjectDropDown;
+        private string lastControllerOwnedProjectDropDownText = "先选择项目";
 
         private void AgentRibbon_Load(object sender, RibbonUIEventArgs e)
         {
@@ -238,8 +239,12 @@ namespace OfficeAgent.ExcelAddIn
 
         private void SetProjectDropDownText(string text)
         {
+            var normalizedText = text ?? string.Empty;
             projectDropDown.Text = text ?? string.Empty;
             projectDropDown.Label = text ?? string.Empty;
+            lastControllerOwnedProjectDropDownText = string.IsNullOrWhiteSpace(normalizedText)
+                ? "先选择项目"
+                : normalizedText;
         }
 
         private RibbonDropDownItem CreateProjectDropDownItem(string label, string tag)
@@ -322,7 +327,39 @@ namespace OfficeAgent.ExcelAddIn
 
         private void RestoreProjectDropDownFromController()
         {
+            var syncController = Globals.ThisAddIn.RibbonSyncController;
+            var noProjectRestoreText = GetNoProjectRestoreText(
+                projectOptionsByKey.Count,
+                syncController?.ActiveProjectId,
+                lastControllerOwnedProjectDropDownText);
+            if (noProjectRestoreText != null)
+            {
+                isUpdatingProjectDropDown = true;
+                try
+                {
+                    SetProjectDropDownText(noProjectRestoreText);
+                }
+                finally
+                {
+                    isUpdatingProjectDropDown = false;
+                }
+
+                return;
+            }
+
             RefreshProjectDropDownFromController();
+        }
+
+        private static string GetNoProjectRestoreText(int projectOptionCount, string activeProjectId, string lastControllerOwnedText)
+        {
+            if (projectOptionCount != 0 || !string.IsNullOrWhiteSpace(activeProjectId))
+            {
+                return null;
+            }
+
+            return string.IsNullOrWhiteSpace(lastControllerOwnedText)
+                ? "先选择项目"
+                : lastControllerOwnedText;
         }
 
         private void FullDownloadButton_Click(object sender, RibbonControlEventArgs e)

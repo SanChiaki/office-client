@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Xunit;
 
 namespace OfficeAgent.ExcelAddIn.Tests
@@ -311,6 +312,29 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 "FormatProjectDropDownLabel(syncController.ActiveProjectId, syncController.ActiveProjectDisplayName)",
                 ribbonCodeText,
                 StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void NoProjectRestoreTextUsesLastControllerOwnedStatusWhenNoItemsAndNoActiveProject()
+        {
+            var addInAssembly = Assembly.LoadFrom(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "bin",
+                "Debug",
+                "OfficeAgent.ExcelAddIn.dll"));
+            var ribbonType = addInAssembly.GetType("OfficeAgent.ExcelAddIn.AgentRibbon", throwOnError: true);
+            var method = ribbonType.GetMethod("GetNoProjectRestoreText", BindingFlags.Static | BindingFlags.NonPublic);
+
+            Assert.NotNull(method);
+            Assert.Equal(
+                "请先登录",
+                (string)method.Invoke(null, new object[] { 0, string.Empty, "请先登录" }));
+            Assert.Equal(
+                "先选择项目",
+                (string)method.Invoke(null, new object[] { 0, string.Empty, string.Empty }));
+            Assert.Null(method.Invoke(null, new object[] { 1, string.Empty, "请先登录" }));
+            Assert.Null(method.Invoke(null, new object[] { 0, "project-1", "请先登录" }));
         }
 
         private static string ResolveRepositoryPath(params string[] segments)
