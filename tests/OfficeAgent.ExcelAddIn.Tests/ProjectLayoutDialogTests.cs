@@ -49,6 +49,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             Assert.True(success);
             var binding = Assert.IsType<SheetBinding>(args[4]);
+            Assert.NotSame(seed, binding);
             Assert.Equal("Sheet1", binding.SheetName);
             Assert.Equal("current-business-system", binding.SystemKey);
             Assert.Equal("performance", binding.ProjectId);
@@ -56,6 +57,9 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Equal(4, binding.HeaderStartRow);
             Assert.Equal(1, binding.HeaderRowCount);
             Assert.Equal(5, binding.DataStartRow);
+            Assert.Equal(1, seed.HeaderStartRow);
+            Assert.Equal(2, seed.HeaderRowCount);
+            Assert.Equal(3, seed.DataStartRow);
             Assert.Null(args[5]);
         }
 
