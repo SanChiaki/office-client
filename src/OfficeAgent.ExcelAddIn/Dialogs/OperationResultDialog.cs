@@ -14,6 +14,8 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
 
         bool ConfirmUpload(string operationName, string projectName, SyncOperationPreview preview);
 
+        SheetBinding ShowProjectLayoutDialog(SheetBinding suggestedBinding);
+
         void ShowInfo(string message);
 
         void ShowWarning(string message);
@@ -36,6 +38,16 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
         public bool ConfirmUpload(string operationName, string projectName, SyncOperationPreview preview)
         {
             return UploadConfirmDialog.Confirm(operationName, projectName, preview);
+        }
+
+        public SheetBinding ShowProjectLayoutDialog(SheetBinding suggestedBinding)
+        {
+            using (var dialog = new ProjectLayoutDialog(suggestedBinding))
+            {
+                return dialog.ShowDialog() == DialogResult.OK
+                    ? dialog.ResultBinding
+                    : null;
+            }
         }
 
         public void ShowInfo(string message)
