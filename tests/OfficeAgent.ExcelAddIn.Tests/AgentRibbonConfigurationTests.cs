@@ -203,6 +203,26 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
+        public void ProjectSelectionLeavesDropdownResetToControllerRefreshFlow()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            var methodStart = ribbonCodeText.IndexOf("private void ProjectDropDown_TextChanged(object sender, RibbonControlEventArgs e)", StringComparison.Ordinal);
+            var nextMethodStart = ribbonCodeText.IndexOf("private void InitializeSheetButton_Click", methodStart, StringComparison.Ordinal);
+
+            Assert.True(methodStart >= 0);
+            Assert.True(nextMethodStart > methodStart);
+
+            var methodBody = ribbonCodeText.Substring(methodStart, nextMethodStart - methodStart);
+            Assert.Contains("Globals.ThisAddIn.RibbonSyncController?.SelectProject(project);", methodBody, StringComparison.Ordinal);
+            Assert.DoesNotContain("SetProjectDropDownText(", methodBody, StringComparison.Ordinal);
+            Assert.DoesNotContain("RefreshProjectDropDownFromController();", methodBody, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RibbonLoadDoesNotPreloadProjectListBeforeUserOpensSelector()
         {
             var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
@@ -232,9 +252,47 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             Assert.Contains("Application.SheetChange += Application_SheetChange;", addInCodeText, StringComparison.Ordinal);
             Assert.Contains("private void Application_SheetChange(object sh, ExcelInterop.Range target)", addInCodeText, StringComparison.Ordinal);
-            Assert.Contains("string.Equals(sheetName, \"_Settings\", StringComparison.OrdinalIgnoreCase)", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("string.Equals(sheetName, \"AI_Setting\", StringComparison.OrdinalIgnoreCase)", addInCodeText, StringComparison.Ordinal);
             Assert.Contains("metadataStore.InvalidateCache();", addInCodeText, StringComparison.Ordinal);
             Assert.Contains("RibbonSyncController?.InvalidateRefreshState();", addInCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RibbonControllerDoesNotAutoInitializeWhenProjectIsSelected()
+        {
+            var ribbonControllerText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "RibbonSyncController.cs"));
+
+            Assert.DoesNotContain("TryAutoInitializeCurrentSheet(sheetName, project);", ribbonControllerText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ProjectDropDownLabelsIncludeProjectIdPrefix()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            Assert.Contains("project?.ProjectId ?? string.Empty", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("project?.DisplayName ?? string.Empty", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("-", ribbonCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RefreshProjectDropDownFormatsSelectedProjectWhenCurrentListDoesNotContainIt()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            Assert.Contains(
+                "FormatProjectDropDownLabel(syncController.ActiveProjectId, syncController.ActiveProjectDisplayName)",
+                ribbonCodeText,
+                StringComparison.Ordinal);
         }
 
         private static string ResolveRepositoryPath(params string[] segments)

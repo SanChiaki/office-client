@@ -23,11 +23,23 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
-        public void SelectProjectSavesBindingAndAttemptsAutoInitialize()
+        public void SelectProjectShowsLayoutDialogAndSavesConfirmedBindingWithoutAutoInitialize()
         {
             var connector = new FakeSystemConnector();
             var metadataStore = new FakeWorksheetMetadataStore();
-            var dialogService = new FakeDialogService();
+            var dialogService = new FakeDialogService
+            {
+                NextProjectLayoutBinding = new SheetBinding
+                {
+                    SheetName = "Sheet1",
+                    SystemKey = "current-business-system",
+                    ProjectId = "performance",
+                    ProjectName = "绩效项目",
+                    HeaderStartRow = 4,
+                    HeaderRowCount = 1,
+                    DataStartRow = 5,
+                },
+            };
             var controller = CreateController(connector, metadataStore, dialogService, () => "Sheet1");
             var option = new ProjectOption
             {
@@ -38,42 +50,136 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             InvokeSelectProject(controller, option);
 
+            Assert.Single(dialogService.ProjectLayoutPrompts);
+            Assert.Equal(1, dialogService.ProjectLayoutPrompts[0].HeaderStartRow);
+            Assert.Equal(2, dialogService.ProjectLayoutPrompts[0].HeaderRowCount);
+            Assert.Equal(3, dialogService.ProjectLayoutPrompts[0].DataStartRow);
             Assert.NotNull(metadataStore.LastSavedBinding);
             Assert.Equal("Sheet1", metadataStore.LastSavedBinding.SheetName);
             Assert.Equal("performance", metadataStore.LastSavedBinding.ProjectId);
+            Assert.Equal(4, metadataStore.LastSavedBinding.HeaderStartRow);
+            Assert.Equal(1, metadataStore.LastSavedBinding.HeaderRowCount);
+            Assert.Equal(5, metadataStore.LastSavedBinding.DataStartRow);
             Assert.Equal("绩效项目", ReadActiveProjectDisplayName(controller));
-            Assert.NotEmpty(metadataStore.LastSavedFieldMappings);
-            Assert.Equal("performance", connector.LastBuildFieldMappingSeedProjectId);
+            Assert.Empty(metadataStore.LastSavedFieldMappings);
+            Assert.Null(connector.LastBuildFieldMappingSeedProjectId);
             Assert.Empty(dialogService.WarningMessages);
         }
 
         [Fact]
-        public void SelectProjectPreservesExistingLayoutConfiguration()
+        public void SelectProjectUsesExistingLayoutAsDialogDefaultsWhenSwitchingProject()
         {
             var connector = new FakeSystemConnector();
             var metadataStore = new FakeWorksheetMetadataStore();
+            var dialogService = new FakeDialogService
+            {
+                NextProjectLayoutBinding = new SheetBinding
+                {
+                    SheetName = "Sheet1",
+                    SystemKey = "current-business-system",
+                    ProjectId = "new-project",
+                    ProjectName = "新项目",
+                    HeaderStartRow = 5,
+                    HeaderRowCount = 2,
+                    DataStartRow = 7,
+                },
+            };
             metadataStore.Bindings["Sheet1"] = new SheetBinding
             {
                 SheetName = "Sheet1",
                 SystemKey = "current-business-system",
                 ProjectId = "old-project",
                 ProjectName = "旧项目",
-                HeaderStartRow = 4,
-                HeaderRowCount = 1,
-                DataStartRow = 8,
+                HeaderStartRow = 5,
+                HeaderRowCount = 2,
+                DataStartRow = 7,
             };
 
-            var controller = CreateController(connector, metadataStore, new FakeDialogService(), () => "Sheet1");
+            var controller = CreateController(connector, metadataStore, dialogService, () => "Sheet1");
             InvokeSelectProject(controller, new ProjectOption
             {
                 SystemKey = "current-business-system",
-                ProjectId = "performance",
-                DisplayName = "绩效项目",
+                ProjectId = "new-project",
+                DisplayName = "新项目",
             });
 
-            Assert.Equal(4, metadataStore.LastSavedBinding.HeaderStartRow);
-            Assert.Equal(1, metadataStore.LastSavedBinding.HeaderRowCount);
-            Assert.Equal(8, metadataStore.LastSavedBinding.DataStartRow);
+            Assert.Single(dialogService.ProjectLayoutPrompts);
+            Assert.Equal("Sheet1", dialogService.ProjectLayoutPrompts[0].SheetName);
+            Assert.Equal("current-business-system", dialogService.ProjectLayoutPrompts[0].SystemKey);
+            Assert.Equal("new-project", dialogService.ProjectLayoutPrompts[0].ProjectId);
+            Assert.Equal("新项目", dialogService.ProjectLayoutPrompts[0].ProjectName);
+            Assert.Equal(5, dialogService.ProjectLayoutPrompts[0].HeaderStartRow);
+            Assert.Equal(2, dialogService.ProjectLayoutPrompts[0].HeaderRowCount);
+            Assert.Equal(7, dialogService.ProjectLayoutPrompts[0].DataStartRow);
+        }
+
+        [Fact]
+        public void SelectProjectDoesNotPromptOrSaveWhenSameProjectIsReselected()
+        {
+            var connector = new FakeSystemConnector();
+            var metadataStore = new FakeWorksheetMetadataStore();
+            var dialogService = new FakeDialogService();
+            metadataStore.Bindings["Sheet1"] = new SheetBinding
+            {
+                SheetName = "Sheet1",
+                SystemKey = "current-business-system",
+                ProjectId = "old-project",
+                ProjectName = "旧项目",
+                HeaderStartRow = 5,
+                HeaderRowCount = 2,
+                DataStartRow = 7,
+            };
+
+            var controller = CreateController(connector, metadataStore, dialogService, () => "Sheet1");
+            InvokeRefresh(controller);
+
+            InvokeSelectProject(controller, new ProjectOption
+            {
+                SystemKey = "current-business-system",
+                ProjectId = "old-project",
+                DisplayName = "旧项目",
+            });
+
+            Assert.Empty(dialogService.ProjectLayoutPrompts);
+            Assert.Null(metadataStore.LastSavedBinding);
+            Assert.Equal("old-project", ReadActiveProjectId(controller));
+            Assert.Equal("旧项目", ReadActiveProjectDisplayName(controller));
+        }
+
+        [Fact]
+        public void SelectProjectCancelKeepsExistingBindingAndActiveProjectState()
+        {
+            var connector = new FakeSystemConnector();
+            var metadataStore = new FakeWorksheetMetadataStore();
+            var dialogService = new FakeDialogService
+            {
+                NextProjectLayoutBinding = null,
+            };
+            metadataStore.Bindings["Sheet1"] = new SheetBinding
+            {
+                SheetName = "Sheet1",
+                SystemKey = "current-business-system",
+                ProjectId = "old-project",
+                ProjectName = "旧项目",
+                HeaderStartRow = 5,
+                HeaderRowCount = 2,
+                DataStartRow = 7,
+            };
+
+            var controller = CreateController(connector, metadataStore, dialogService, () => "Sheet1");
+            InvokeRefresh(controller);
+
+            InvokeSelectProject(controller, new ProjectOption
+            {
+                SystemKey = "current-business-system",
+                ProjectId = "new-project",
+                DisplayName = "新项目",
+            });
+
+            Assert.Single(dialogService.ProjectLayoutPrompts);
+            Assert.Null(metadataStore.LastSavedBinding);
+            Assert.Equal("old-project", ReadActiveProjectId(controller));
+            Assert.Equal("旧项目", ReadActiveProjectDisplayName(controller));
         }
 
         [Fact]
@@ -508,6 +614,10 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             public List<string> ErrorMessages { get; } = new List<string>();
 
+            public List<SheetBinding> ProjectLayoutPrompts { get; } = new List<SheetBinding>();
+
+            public SheetBinding NextProjectLayoutBinding { get; set; }
+
             public override IMessage Invoke(IMessage msg)
             {
                 var call = (IMethodCallMessage)msg;
@@ -516,6 +626,9 @@ namespace OfficeAgent.ExcelAddIn.Tests
                     case "ConfirmDownload":
                     case "ConfirmUpload":
                         return new ReturnMessage(true, null, 0, call.LogicalCallContext, call);
+                    case "ShowProjectLayoutDialog":
+                        ProjectLayoutPrompts.Add(CloneBinding((SheetBinding)call.InArgs[0]));
+                        return new ReturnMessage(CloneBinding(NextProjectLayoutBinding), null, 0, call.LogicalCallContext, call);
                     case "ShowInfo":
                         InfoMessages.Add((string)call.InArgs[0]);
                         return new ReturnMessage(null, null, 0, call.LogicalCallContext, call);
@@ -539,6 +652,25 @@ namespace OfficeAgent.ExcelAddIn.Tests
             {
                 return Assembly.LoadFrom(ResolveAddInAssemblyPath())
                     .GetType("OfficeAgent.ExcelAddIn.Dialogs.IRibbonSyncDialogService", throwOnError: true);
+            }
+
+            private static SheetBinding CloneBinding(SheetBinding binding)
+            {
+                if (binding == null)
+                {
+                    return null;
+                }
+
+                return new SheetBinding
+                {
+                    SheetName = binding.SheetName,
+                    SystemKey = binding.SystemKey,
+                    ProjectId = binding.ProjectId,
+                    ProjectName = binding.ProjectName,
+                    HeaderStartRow = binding.HeaderStartRow,
+                    HeaderRowCount = binding.HeaderRowCount,
+                    DataStartRow = binding.DataStartRow,
+                };
             }
         }
 
