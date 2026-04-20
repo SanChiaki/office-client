@@ -483,12 +483,30 @@ namespace OfficeAgent.ExcelAddIn
 
         private void WritePartialCells(WorksheetDownloadPlan plan)
         {
+            var writeBatches = BuildPartialWriteBatches(plan);
+            if (writeBatches.Count == 0)
+            {
+                return;
+            }
+
+            using (gridAdapter.BeginBulkOperation())
+            {
+                foreach (var batch in writeBatches)
+                {
+                    gridAdapter.WriteRangeValues(plan.SheetName, batch.StartRow, batch.StartColumn, batch.Values);
+                }
+            }
+        }
+
+        private List<PartialWorksheetWriteBatch> BuildPartialWriteBatches(WorksheetDownloadPlan plan)
+        {
             var columnsByIndex = (plan.Schema?.Columns ?? Array.Empty<WorksheetColumnBinding>())
                 .ToDictionary(column => column.ColumnIndex, column => column);
             var rowsById = (plan.Rows ?? Array.Empty<IDictionary<string, object>>())
                 .Where(row => !string.IsNullOrWhiteSpace(GetRowId(plan.Schema, row)))
                 .ToDictionary(row => GetRowId(plan.Schema, row), row => row, StringComparer.Ordinal);
             var rowIdAccessor = CreateCachedRowIdAccessor(plan.SheetName, plan.Schema);
+            var writeCells = new List<PartialWorksheetWriteCell>();
 
             foreach (var targetCell in plan.Selection?.TargetCells ?? Array.Empty<SelectedVisibleCell>())
             {
@@ -503,8 +521,139 @@ namespace OfficeAgent.ExcelAddIn
                     continue;
                 }
 
-                gridAdapter.SetCellText(plan.SheetName, targetCell.Row, targetCell.Column, GetRowValue(row, column.ApiFieldKey));
+                writeCells.Add(new PartialWorksheetWriteCell
+                {
+                    Row = targetCell.Row,
+                    Column = targetCell.Column,
+                    Value = GetRowValue(row, column.ApiFieldKey),
+                });
             }
+
+            if (writeCells.Count == 0)
+            {
+                return new List<PartialWorksheetWriteBatch>();
+            }
+
+            var rowSegments = BuildPartialRowSegments(writeCells);
+            var batches = new List<PartialWorksheetWriteBatch>();
+            PartialWorksheetWriteBatch currentBatch = null;
+
+            foreach (var segment in rowSegments)
+            {
+                if (currentBatch != null &&
+                    segment.Row == currentBatch.EndRow + 1 &&
+                    segment.StartColumn == currentBatch.StartColumn &&
+                    segment.EndColumn == currentBatch.EndColumn)
+                {
+                    currentBatch.EndRow = segment.Row;
+                    currentBatch.RowValues.Add(segment.Values);
+                    continue;
+                }
+
+                if (currentBatch != null)
+                {
+                    batches.Add(FinalizePartialWriteBatch(currentBatch));
+                }
+
+                currentBatch = new PartialWorksheetWriteBatch
+                {
+                    StartRow = segment.Row,
+                    EndRow = segment.Row,
+                    StartColumn = segment.StartColumn,
+                    EndColumn = segment.EndColumn,
+                    RowValues = new List<object[]> { segment.Values },
+                };
+            }
+
+            if (currentBatch != null)
+            {
+                batches.Add(FinalizePartialWriteBatch(currentBatch));
+            }
+
+            return batches;
+        }
+
+        private static List<PartialWorksheetWriteRowSegment> BuildPartialRowSegments(IEnumerable<PartialWorksheetWriteCell> writeCells)
+        {
+            var normalizedCells = (writeCells ?? Enumerable.Empty<PartialWorksheetWriteCell>())
+                .Where(cell => cell != null)
+                .GroupBy(cell => new { cell.Row, cell.Column })
+                .Select(group => group.Last())
+                .OrderBy(cell => cell.Row)
+                .ThenBy(cell => cell.Column);
+            var segments = new List<PartialWorksheetWriteRowSegment>();
+
+            foreach (var rowGroup in normalizedCells.GroupBy(cell => cell.Row))
+            {
+                PartialWorksheetWriteRowSegment currentSegment = null;
+                foreach (var cell in rowGroup.OrderBy(item => item.Column))
+                {
+                    if (currentSegment != null && cell.Column == currentSegment.EndColumn + 1)
+                    {
+                        currentSegment.EndColumn = cell.Column;
+                        currentSegment.Cells.Add(cell.Value);
+                        continue;
+                    }
+
+                    if (currentSegment != null)
+                    {
+                        segments.Add(new PartialWorksheetWriteRowSegment
+                        {
+                            Row = currentSegment.Row,
+                            StartColumn = currentSegment.StartColumn,
+                            EndColumn = currentSegment.EndColumn,
+                            Values = currentSegment.Cells.ToArray(),
+                        });
+                    }
+
+                    currentSegment = new PartialWorksheetWriteRowSegment
+                    {
+                        Row = cell.Row,
+                        StartColumn = cell.Column,
+                        EndColumn = cell.Column,
+                        Cells = new List<object> { cell.Value },
+                    };
+                }
+
+                if (currentSegment != null)
+                {
+                    segments.Add(new PartialWorksheetWriteRowSegment
+                    {
+                        Row = currentSegment.Row,
+                        StartColumn = currentSegment.StartColumn,
+                        EndColumn = currentSegment.EndColumn,
+                        Values = currentSegment.Cells.ToArray(),
+                    });
+                }
+            }
+
+            return segments;
+        }
+
+        private static PartialWorksheetWriteBatch FinalizePartialWriteBatch(PartialWorksheetWriteBatch batch)
+        {
+            if (batch == null)
+            {
+                return null;
+            }
+
+            var rowValues = batch.RowValues ?? new List<object[]>();
+            var columnCount = rowValues.Count == 0 ? 0 : rowValues[0]?.Length ?? 0;
+            var values = new object[rowValues.Count, columnCount];
+
+            for (var rowIndex = 0; rowIndex < rowValues.Count; rowIndex++)
+            {
+                var sourceRow = rowValues[rowIndex] ?? Array.Empty<object>();
+                for (var columnIndex = 0; columnIndex < columnCount; columnIndex++)
+                {
+                    values[rowIndex, columnIndex] = columnIndex < sourceRow.Length
+                        ? sourceRow[columnIndex]
+                        : string.Empty;
+                }
+            }
+
+            batch.Values = values;
+            return batch;
         }
 
         private ResolvedSelection ResolveCurrentSelection(WorksheetSchema schema, Func<int, string> rowIdAccessor)
@@ -863,5 +1012,31 @@ namespace OfficeAgent.ExcelAddIn
         public int EndColumn { get; set; }
         public object[,] Values { get; set; }
         public string[,] NumberFormats { get; set; }
+    }
+
+    internal sealed class PartialWorksheetWriteCell
+    {
+        public int Row { get; set; }
+        public int Column { get; set; }
+        public object Value { get; set; }
+    }
+
+    internal sealed class PartialWorksheetWriteRowSegment
+    {
+        public int Row { get; set; }
+        public int StartColumn { get; set; }
+        public int EndColumn { get; set; }
+        public object[] Values { get; set; } = Array.Empty<object>();
+        public List<object> Cells { get; set; } = new List<object>();
+    }
+
+    internal sealed class PartialWorksheetWriteBatch
+    {
+        public int StartRow { get; set; }
+        public int EndRow { get; set; }
+        public int StartColumn { get; set; }
+        public int EndColumn { get; set; }
+        public List<object[]> RowValues { get; set; } = new List<object[]>();
+        public object[,] Values { get; set; } = new object[0, 0];
     }
 }

@@ -159,6 +159,74 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
+        public void ExecutePartialDownloadBatchesRectangularSelectionWrites()
+        {
+            var connector = new FakeSystemConnector();
+            var metadataStore = new FakeWorksheetMetadataStore();
+            var binding = new SheetBinding
+            {
+                SheetName = "Sheet1",
+                SystemKey = "current-business-system",
+                ProjectId = "performance",
+                ProjectName = "绩效项目",
+                HeaderStartRow = 3,
+                HeaderRowCount = 2,
+                DataStartRow = 6,
+            };
+            metadataStore.Bindings["Sheet1"] = binding;
+            metadataStore.FieldMappings["Sheet1"] = BuildDefaultMappings("Sheet1");
+            connector.FindResult = new[]
+            {
+                CreateRow("row-1", "张三", "2026-02-01", "2026-02-09"),
+                CreateRow("row-2", "李四", "2026-03-01", "2026-03-09"),
+            };
+
+            var selectionReader = new FakeWorksheetSelectionReader
+            {
+                VisibleCells = new[]
+                {
+                    new SelectedVisibleCell { Row = 6, Column = 3, Value = "旧开始时间1" },
+                    new SelectedVisibleCell { Row = 6, Column = 4, Value = "旧结束时间1" },
+                    new SelectedVisibleCell { Row = 7, Column = 3, Value = "旧开始时间2" },
+                    new SelectedVisibleCell { Row = 7, Column = 4, Value = "旧结束时间2" },
+                },
+            };
+            var (service, grid) = CreateService(connector, metadataStore, selectionReader);
+            SeedRecognizedHeaders(grid, "Sheet1", binding);
+            grid.SetCell("Sheet1", 6, 1, "row-1");
+            grid.SetCell("Sheet1", 7, 1, "row-2");
+            grid.SetCell("Sheet1", 6, 3, "旧开始时间1");
+            grid.SetCell("Sheet1", 6, 4, "旧结束时间1");
+            grid.SetCell("Sheet1", 7, 3, "旧开始时间2");
+            grid.SetCell("Sheet1", 7, 4, "旧结束时间2");
+
+            var plan = InvokePrepare(service, "PreparePartialDownload", "Sheet1");
+
+            Assert.Equal(0, grid.BeginBulkOperationCount);
+            Assert.Equal(0, grid.EndBulkOperationCount);
+
+            InvokeExecute(service, "ExecuteDownload", plan);
+
+            var write = Assert.Single(grid.WriteRangeCalls);
+            Assert.Equal("Sheet1", write.SheetName);
+            Assert.Equal(6, write.StartRow);
+            Assert.Equal(3, write.StartColumn);
+            Assert.Equal(2, write.Values.GetLength(0));
+            Assert.Equal(2, write.Values.GetLength(1));
+            Assert.Equal("2026-02-01", Convert.ToString(write.Values[0, 0]));
+            Assert.Equal("2026-02-09", Convert.ToString(write.Values[0, 1]));
+            Assert.Equal("2026-03-01", Convert.ToString(write.Values[1, 0]));
+            Assert.Equal("2026-03-09", Convert.ToString(write.Values[1, 1]));
+            Assert.True(write.WasInsideBulkOperation);
+            Assert.Equal(1, grid.BeginBulkOperationCount);
+            Assert.Equal(1, grid.EndBulkOperationCount);
+            Assert.Equal("2026-02-01", grid.GetCell("Sheet1", 6, 3));
+            Assert.Equal("2026-02-09", grid.GetCell("Sheet1", 6, 4));
+            Assert.Equal("2026-03-01", grid.GetCell("Sheet1", 7, 3));
+            Assert.Equal("2026-03-09", grid.GetCell("Sheet1", 7, 4));
+        }
+
+        [Fact]
         public void ExecuteFullDownloadDoesNotRewriteExistingRecognizedHeaders()
         {
             var connector = new FakeSystemConnector();
