@@ -103,6 +103,7 @@ namespace OfficeAgent.ExcelAddIn
                 return;
             }
 
+            metadataStore.ClearFieldMappings(sheetName);
             metadataStore.SaveBinding(confirmedBinding);
             lastRefreshedSheetName = sheetName;
             ApplyBindingState(confirmedBinding);

@@ -274,9 +274,7 @@ namespace OfficeAgent.ExcelAddIn
 
             if (!HasUsableMappings(definition, mappings))
             {
-                worksheetSyncService.InitializeSheet(sheetName, CreateProjectOption(binding));
-                definition = worksheetSyncService.LoadFieldMappingDefinition(binding.SystemKey, binding.ProjectId);
-                mappings = worksheetSyncService.LoadFieldMappings(sheetName, binding.SystemKey, binding.ProjectId) ?? Array.Empty<SheetFieldMappingRow>();
+                throw CreateInitializationRequiredException();
             }
 
             return new SheetExecutionContext
@@ -816,16 +814,6 @@ namespace OfficeAgent.ExcelAddIn
                 !string.IsNullOrWhiteSpace(valueAccessor.GetValue(definition, row, FieldMappingSemanticRole.ApiFieldKey)));
         }
 
-        private static ProjectOption CreateProjectOption(SheetBinding binding)
-        {
-            return new ProjectOption
-            {
-                SystemKey = binding?.SystemKey ?? string.Empty,
-                ProjectId = binding?.ProjectId ?? string.Empty,
-                DisplayName = binding?.ProjectName ?? string.Empty,
-            };
-        }
-
         private SyncOperationPreview BuildUploadPreview(string operationName, IReadOnlyList<CellChange> changes)
         {
             var preview = previewFactory.CreateUploadPreview(operationName, changes);
@@ -959,7 +947,7 @@ namespace OfficeAgent.ExcelAddIn
 
         private static InvalidOperationException CreateHeaderMatchException()
         {
-            return new InvalidOperationException("当前表头无法与映射表匹配，请先修正 _Settings。");
+            return new InvalidOperationException("当前表头无法与映射表匹配，请先修正 AI_Setting。");
         }
 
         private static void ValidateBinding(SheetBinding binding)

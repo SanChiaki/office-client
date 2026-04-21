@@ -63,6 +63,7 @@
 - On a sheet that already has binding metadata, switch to another project and confirm the layout dialog defaults reuse the current sheet's saved layout values.
 - Reselect the already bound project (`same systemKey + projectId`) and confirm no layout dialog appears and `SheetBindings` is not rewritten.
 - Cancel the layout dialog while switching projects and confirm both `AI_Setting` binding data and Ribbon dropdown project stay unchanged.
+- After switching to another project and confirming the dialog, verify old `SheetFieldMappings` are cleared; before clicking `初始化当前表`, running download/upload should report that the current sheet is not initialized.
 - Enter invalid values in the layout dialog (for example overlaps between header/data regions) and confirm validation error is shown while keeping the dialog open.
 - Start Excel while unauthenticated against a protected project API and confirm the project dropdown shows `请先登录`.
 - Configure the project API to return an empty array and confirm the project dropdown shows `无可用项目`.
