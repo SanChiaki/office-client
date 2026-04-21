@@ -87,6 +87,14 @@ node server.js
   {
     "projectId": "performance",
     "displayName": "绩效项目"
+  },
+  {
+    "projectId": "delivery-tracker",
+    "displayName": "交付跟踪项目"
+  },
+  {
+    "projectId": "customer-onboarding",
+    "displayName": "客户上线项目"
   }
 ]
 ```
@@ -99,6 +107,7 @@ node server.js
 
 当前约定：
 
+- 按请求体 `projectId` 返回对应项目的字段头
 - 返回所有非活动字段头
 - 活动列只返回活动头
 - 活动属性字段本身不在 `/head` 中单独列出
@@ -132,6 +141,7 @@ node server.js
 
 约定：
 
+- 按请求体 `projectId` 返回对应项目的数据集
 - `ids` / `rowIds` 为空时返回全量数据
 - `fieldKeys` 为空时返回整行平铺数据
 - 每行的唯一 ID 字段是 `row_id`
@@ -165,26 +175,34 @@ node server.js
 - `fieldKey`
 - `value`
 
-当前实现会把 `id` 映射到行的 `row_id`。
+当前实现会按每个 item 的 `projectId` 选择目标项目，再把 `id` 映射到行的 `row_id`。
 
 ## 当前内置数据
 
 Ribbon Sync mock 数据保存在 [server.js](/D:/Workspace/demos/office-agent/.worktrees/ribbon-sync/tests/mock-server/server.js) 的内存变量中，主要包括：
 
-- `connectorRows`
-  - `/find` 与 `/batchSave` 使用的数据行
-- `connectorHeadList`
-  - `/head` 返回的字段头定义
+- `connectorProjectData`
+  - 按 `projectId` 组织的项目、字段头和数据行
 - `connectorProjects`
   - `/projects` 返回的项目列表
 
-当前内置活动示例：
+当前内置项目：
 
-- `activityId = 12345678`
-- `activityName = 测试活动111`
-- 活动属性字段：
-  - `start_12345678`
-  - `end_12345678`
+- `performance`
+  - `displayName = 绩效项目`
+  - `2` 条示例数据
+  - `activityId = 12345678`
+  - `activityName = 测试活动111`
+- `delivery-tracker`
+  - `displayName = 交付跟踪项目`
+  - `10` 条示例数据
+  - `activityId = 22334455`
+  - `activityName = 交付阶段`
+- `customer-onboarding`
+  - `displayName = 客户上线项目`
+  - `10` 条示例数据
+  - `activityId = 99887766`
+  - `activityName = 上线流程`
 
 ## 数据持久化说明
 

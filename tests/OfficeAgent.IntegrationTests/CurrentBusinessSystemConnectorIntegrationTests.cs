@@ -92,6 +92,38 @@ namespace OfficeAgent.IntegrationTests
             Assert.Equal("开始时间", activityColumn.ChildHeaderText);
         }
 
+        [Fact]
+        public async Task GetProjectsReturnsAdditionalMockProjectsWithIndependentRows()
+        {
+            var connector = await CreateConnectorAsync();
+
+            var projects = connector.GetProjects();
+
+            Assert.Equal(3, projects.Count);
+            Assert.Contains(
+                projects,
+                project => string.Equals(project.ProjectId, "performance", StringComparison.Ordinal)
+                    && string.Equals(project.DisplayName, "绩效项目", StringComparison.Ordinal));
+            Assert.Contains(
+                projects,
+                project => string.Equals(project.ProjectId, "delivery-tracker", StringComparison.Ordinal)
+                    && string.Equals(project.DisplayName, "交付跟踪项目", StringComparison.Ordinal));
+            Assert.Contains(
+                projects,
+                project => string.Equals(project.ProjectId, "customer-onboarding", StringComparison.Ordinal)
+                    && string.Equals(project.DisplayName, "客户上线项目", StringComparison.Ordinal));
+
+            var rows = connector.Find("delivery-tracker", Array.Empty<string>(), Array.Empty<string>());
+
+            Assert.Equal(10, rows.Count);
+            Assert.All(
+                rows,
+                row => Assert.StartsWith(
+                    "delivery-row-",
+                    row["row_id"]?.ToString() ?? string.Empty,
+                    StringComparison.Ordinal));
+        }
+
         private async Task<CurrentBusinessSystemConnector> CreateConnectorAsync()
         {
             var cookieJar = await fixture.LoginAs("connector_user", "password123").ConfigureAwait(false);

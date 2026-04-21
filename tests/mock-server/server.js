@@ -23,24 +23,129 @@ const performances = [
 
 const uploadedProjects = {};
 
-const connectorRows = [
-  { row_id: "row-1", owner_name: "张三", start_12345678: "2026-01-02", end_12345678: "2026-01-05" },
-  { row_id: "row-2", owner_name: "李四", start_12345678: "2026-01-10", end_12345678: "2026-01-15" },
-];
+const connectorProjectData = {
+  performance: createConnectorProject(
+    "performance",
+    "绩效项目",
+    "12345678",
+    "测试活动111",
+    [
+      { rowId: "row-1", ownerName: "张三", startDate: "2026-01-02", endDate: "2026-01-05" },
+      { rowId: "row-2", ownerName: "李四", startDate: "2026-01-10", endDate: "2026-01-15" },
+    ]),
+  "delivery-tracker": createConnectorProject(
+    "delivery-tracker",
+    "交付跟踪项目",
+    "22334455",
+    "交付阶段",
+    [
+      { rowId: "delivery-row-1", ownerName: "交付一组", startDate: "2026-02-01", endDate: "2026-02-03" },
+      { rowId: "delivery-row-2", ownerName: "交付二组", startDate: "2026-02-04", endDate: "2026-02-06" },
+      { rowId: "delivery-row-3", ownerName: "交付三组", startDate: "2026-02-07", endDate: "2026-02-09" },
+      { rowId: "delivery-row-4", ownerName: "交付四组", startDate: "2026-02-10", endDate: "2026-02-12" },
+      { rowId: "delivery-row-5", ownerName: "交付五组", startDate: "2026-02-13", endDate: "2026-02-15" },
+      { rowId: "delivery-row-6", ownerName: "交付六组", startDate: "2026-02-16", endDate: "2026-02-18" },
+      { rowId: "delivery-row-7", ownerName: "交付七组", startDate: "2026-02-19", endDate: "2026-02-21" },
+      { rowId: "delivery-row-8", ownerName: "交付八组", startDate: "2026-02-22", endDate: "2026-02-24" },
+      { rowId: "delivery-row-9", ownerName: "交付九组", startDate: "2026-02-25", endDate: "2026-02-27" },
+      { rowId: "delivery-row-10", ownerName: "交付十组", startDate: "2026-02-28", endDate: "2026-03-02" },
+    ]),
+  "customer-onboarding": createConnectorProject(
+    "customer-onboarding",
+    "客户上线项目",
+    "99887766",
+    "上线流程",
+    [
+      { rowId: "onboarding-row-1", ownerName: "客户成功一组", startDate: "2026-03-01", endDate: "2026-03-03" },
+      { rowId: "onboarding-row-2", ownerName: "客户成功二组", startDate: "2026-03-04", endDate: "2026-03-06" },
+      { rowId: "onboarding-row-3", ownerName: "客户成功三组", startDate: "2026-03-07", endDate: "2026-03-09" },
+      { rowId: "onboarding-row-4", ownerName: "客户成功四组", startDate: "2026-03-10", endDate: "2026-03-12" },
+      { rowId: "onboarding-row-5", ownerName: "客户成功五组", startDate: "2026-03-13", endDate: "2026-03-15" },
+      { rowId: "onboarding-row-6", ownerName: "客户成功六组", startDate: "2026-03-16", endDate: "2026-03-18" },
+      { rowId: "onboarding-row-7", ownerName: "客户成功七组", startDate: "2026-03-19", endDate: "2026-03-21" },
+      { rowId: "onboarding-row-8", ownerName: "客户成功八组", startDate: "2026-03-22", endDate: "2026-03-24" },
+      { rowId: "onboarding-row-9", ownerName: "客户成功九组", startDate: "2026-03-25", endDate: "2026-03-27" },
+      { rowId: "onboarding-row-10", ownerName: "客户成功十组", startDate: "2026-03-28", endDate: "2026-03-30" },
+    ]),
+};
 
-const connectorHeadList = [
-  { fieldKey: "row_id", headerText: "ID", headType: "single", isId: true },
-  { fieldKey: "owner_name", headerText: "负责人", headType: "single" },
-  {
-    headType: "activity",
-    activityId: "12345678",
-    activityName: "测试活动111",
-  },
-];
+const connectorProjects = Object.keys(connectorProjectData).map(function (projectId) {
+  var project = connectorProjectData[projectId];
+  return {
+    projectId: project.projectId,
+    displayName: project.displayName,
+  };
+});
 
-const connectorProjects = [
-  { projectId: "performance", displayName: "绩效项目" },
-];
+function createConnectorProject(projectId, displayName, activityId, activityName, rows) {
+  return {
+    projectId: projectId,
+    displayName: displayName,
+    headList: createConnectorHeadList(activityId, activityName),
+    rows: createConnectorRows(activityId, rows),
+  };
+}
+
+function createConnectorHeadList(activityId, activityName) {
+  return [
+    { fieldKey: "row_id", headerText: "ID", headType: "single", isId: true },
+    { fieldKey: "owner_name", headerText: "负责人", headType: "single" },
+    {
+      headType: "activity",
+      activityId: activityId,
+      activityName: activityName,
+    },
+  ];
+}
+
+function createConnectorRows(activityId, rows) {
+  var startFieldKey = "start_" + activityId;
+  var endFieldKey = "end_" + activityId;
+
+  return rows.map(function (row) {
+    return {
+      row_id: row.rowId,
+      owner_name: row.ownerName,
+      [startFieldKey]: row.startDate,
+      [endFieldKey]: row.endDate,
+    };
+  });
+}
+
+function getConnectorProject(projectId) {
+  if (!projectId) {
+    return null;
+  }
+
+  return connectorProjectData[projectId] || null;
+}
+
+function resolveConnectorProject(projectId, res) {
+  if (!projectId) {
+    res.status(400).json({ code: "bad_request", message: "projectId 字段必填。" });
+    return null;
+  }
+
+  var project = getConnectorProject(projectId);
+  if (!project) {
+    res.status(404).json({ code: "not_found", message: '未找到项目\u300c' + projectId + '\u300d。' });
+    return null;
+  }
+
+  return project;
+}
+
+function getBatchSaveItems(body) {
+  if (Array.isArray(body)) {
+    return body;
+  }
+
+  if (body && Array.isArray(body.items)) {
+    return body.items;
+  }
+
+  return [];
+}
 
 // ---------------------------------------------------------------------------
 // SSO Login Server :3100
@@ -162,14 +267,28 @@ apiApp.get("/projects", requireAuth, function (_req, res) {
   res.json(connectorProjects);
 });
 
-apiApp.post("/head", requireAuth, function (_req, res) {
-  res.json({ headList: connectorHeadList });
+apiApp.post("/head", requireAuth, function (req, res) {
+  var project = resolveConnectorProject((req.body || {}).projectId, res);
+  if (!project) {
+    return;
+  }
+
+  res.json({ headList: project.headList });
 });
 
 apiApp.post("/find", requireAuth, function (req, res) {
-  var ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  var project = resolveConnectorProject((req.body || {}).projectId, res);
+  if (!project) {
+    return;
+  }
+
+  var ids = Array.isArray(req.body?.ids)
+    ? req.body.ids
+    : Array.isArray(req.body?.rowIds)
+      ? req.body.rowIds
+      : [];
   var fieldKeys = Array.isArray(req.body?.fieldKeys) ? req.body.fieldKeys : [];
-  var result = connectorRows;
+  var result = project.rows;
 
   if (ids.length > 0) {
     result = result.filter(function (row) {
@@ -196,15 +315,29 @@ apiApp.post("/find", requireAuth, function (req, res) {
 });
 
 apiApp.post("/batchSave", requireAuth, function (req, res) {
-  var items = Array.isArray(req.body) ? req.body : [];
+  var items = getBatchSaveItems(req.body);
   if (items.length === 0) {
     return res.status(400).json({ code: "bad_request", message: "items 必须为非空数组。" });
   }
+
+  for (var i = 0; i < items.length; i++) {
+    var batchItem = items[i];
+    var batchProjectId = batchItem && (batchItem.projectId || batchItem.ProjectId);
+    if (!batchProjectId) {
+      return res.status(400).json({ code: "bad_request", message: "batchSave item.projectId 字段必填。" });
+    }
+
+    if (!getConnectorProject(batchProjectId)) {
+      return res.status(404).json({ code: "not_found", message: '未找到项目\u300c' + batchProjectId + '\u300d。' });
+    }
+  }
+
   items.forEach(function (item) {
     if (!item) {
       return;
     }
 
+    var projectId = item.projectId || item.ProjectId;
     var rowId = item.id || item.Id;
     var fieldKey = item.fieldKey || item.FieldKey;
     var value = item.value != null ? item.value : item.Value;
@@ -212,7 +345,8 @@ apiApp.post("/batchSave", requireAuth, function (req, res) {
       return;
     }
 
-    var target = connectorRows.find(function (row) { return row.row_id === rowId; });
+    var project = getConnectorProject(projectId);
+    var target = project.rows.find(function (row) { return row.row_id === rowId; });
     if (target) {
       target[fieldKey] = value != null ? value : "";
     }
