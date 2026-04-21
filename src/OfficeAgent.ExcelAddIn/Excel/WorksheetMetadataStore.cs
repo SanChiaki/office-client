@@ -9,7 +9,7 @@ namespace OfficeAgent.ExcelAddIn.Excel
 {
     internal sealed class WorksheetMetadataStore : IWorksheetMetadataStore
     {
-        private const string MetadataSheetName = "_Settings";
+        private const string MetadataSheetName = "AI_Setting";
         private const string BindingsTableName = "SheetBindings";
         private const string FieldMappingsTableName = "SheetFieldMappings";
         private static readonly string[] DefaultFieldMappingHeaders = { "SheetName" };
@@ -88,30 +88,15 @@ namespace OfficeAgent.ExcelAddIn.Excel
                 throw new ArgumentException("Sheet name is required.", nameof(sheetName));
             }
 
-            var rows = GetBindingRows();
+            var binding = GetBindingRows()
+                .Select(ParseBindingRow)
+                .FirstOrDefault(candidate =>
+                    candidate != null &&
+                    string.Equals(candidate.SheetName, sheetName, StringComparison.OrdinalIgnoreCase));
 
-            foreach (var row in rows)
+            if (binding != null)
             {
-                if (row.Length < 4 || string.IsNullOrWhiteSpace(row[0]))
-                {
-                    continue;
-                }
-
-                if (!string.Equals(row[0], sheetName, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                return new SheetBinding
-                {
-                    SheetName = row[0],
-                    SystemKey = row[1],
-                    ProjectId = row[2],
-                    ProjectName = row[3],
-                    HeaderStartRow = ParseIntOrDefault(row, 4, defaultValue: 1),
-                    HeaderRowCount = ParseIntOrDefault(row, 5, defaultValue: 2),
-                    DataStartRow = ParseIntOrDefault(row, 6, defaultValue: 3),
-                };
+                return binding;
             }
 
             throw new InvalidOperationException($"Binding for worksheet '{sheetName}' does not exist.");
@@ -267,6 +252,25 @@ namespace OfficeAgent.ExcelAddIn.Excel
             return int.TryParse(row[index], NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
                 ? parsed
                 : defaultValue;
+        }
+
+        private static SheetBinding ParseBindingRow(IReadOnlyList<string> row)
+        {
+            if (row == null || row.Count < 4 || string.IsNullOrWhiteSpace(row[0]))
+            {
+                return null;
+            }
+
+            return new SheetBinding
+            {
+                SheetName = row[0],
+                SystemKey = row[1],
+                ProjectId = row[2],
+                ProjectName = row[3],
+                HeaderStartRow = ParseIntOrDefault(row, 4, defaultValue: 1),
+                HeaderRowCount = ParseIntOrDefault(row, 5, defaultValue: 2),
+                DataStartRow = ParseIntOrDefault(row, 6, defaultValue: 3),
+            };
         }
 
         private static FieldMappingColumnDefinition[] GetValidatedColumns(FieldMappingTableDefinition definition)

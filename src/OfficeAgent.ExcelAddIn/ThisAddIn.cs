@@ -103,8 +103,11 @@ namespace OfficeAgent.ExcelAddIn
                 GetActiveWorksheetName,
                 WorksheetSyncExecutionService);
             RibbonSyncController.RefreshActiveProjectFromSheetMetadata();
+            Globals.Ribbons.AgentRibbon?.BindToSyncControllerAndRefresh();
             lastProjectRefreshSheetName = GetActiveWorksheetName();
             TaskPaneController = new TaskPaneController(this, SessionStore, SettingsStore, ExcelContextService, ExcelCommandExecutor, AgentOrchestrator, SharedCookies, CookieStore);
+            Application.WorkbookActivate += Application_WorkbookActivate;
+            Application.SheetActivate += Application_SheetActivate;
             Application.SheetSelectionChange += Application_SheetSelectionChange;
             Application.SheetChange += Application_SheetChange;
             OfficeAgentLog.Info("host", "startup.completed", "OfficeAgent Excel add-in started.");
@@ -112,6 +115,8 @@ namespace OfficeAgent.ExcelAddIn
 
         private void ThisAddIn_Shutdown(object sender, EventArgs e)
         {
+            Application.WorkbookActivate -= Application_WorkbookActivate;
+            Application.SheetActivate -= Application_SheetActivate;
             Application.SheetSelectionChange -= Application_SheetSelectionChange;
             Application.SheetChange -= Application_SheetChange;
             OfficeAgentLog.Info("host", "shutdown", "OfficeAgent Excel add-in stopped.");
@@ -126,11 +131,18 @@ namespace OfficeAgent.ExcelAddIn
 
         private void Application_SheetSelectionChange(object sh, ExcelInterop.Range target)
         {
-            OfficeAgentLog.Info("excel", "selection.changed", "Excel selection changed.");
             var sheetName = GetWorksheetName(sh);
+            var activeSheetName = GetActiveWorksheetName();
+            if (!string.Equals(sheetName, activeSheetName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            OfficeAgentLog.Info("excel", "selection.changed", "Excel selection changed.");
+
             if (!string.Equals(lastProjectRefreshSheetName, sheetName, StringComparison.OrdinalIgnoreCase))
             {
-                RibbonSyncController?.RefreshActiveProjectFromSheetMetadata();
+                RibbonSyncController?.RefreshProjectFromSheetMetadata(sheetName);
                 lastProjectRefreshSheetName = sheetName;
             }
 
@@ -138,10 +150,24 @@ namespace OfficeAgent.ExcelAddIn
             RestoreWorksheetFocus(target);
         }
 
+        private void Application_SheetActivate(object sh)
+        {
+            var sheetName = GetWorksheetName(sh);
+            RibbonSyncController?.RefreshProjectFromSheetMetadata(sheetName);
+            lastProjectRefreshSheetName = sheetName;
+        }
+
+        private void Application_WorkbookActivate(ExcelInterop.Workbook wb)
+        {
+            RibbonSyncController?.InvalidateRefreshState();
+            RibbonSyncController?.RefreshActiveProjectFromSheetMetadata();
+            lastProjectRefreshSheetName = GetActiveWorksheetName();
+        }
+
         private void Application_SheetChange(object sh, ExcelInterop.Range target)
         {
             var sheetName = GetWorksheetName(sh);
-            if (!string.Equals(sheetName, "_Settings", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(sheetName, "AI_Setting", StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }

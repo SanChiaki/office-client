@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Xunit;
 
 namespace OfficeAgent.ExcelAddIn.Tests
@@ -34,6 +35,37 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             Assert.Contains("this.group1.Name = \"groupAgent\";", designerText, StringComparison.Ordinal);
             Assert.Contains("this.toggleTaskPaneButton.Name = \"openTaskPaneButton\";", designerText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RibbonBrandingUsesIsdp()
+        {
+            var designerText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.Designer.cs"));
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            Assert.Contains("this.tab1.Label = \"ISDP\";", designerText, StringComparison.Ordinal);
+            Assert.Contains("this.group1.Label = \"ISDP\";", designerText, StringComparison.Ordinal);
+            Assert.Contains("this.toggleTaskPaneButton.Label = \"ISDP\";", designerText, StringComparison.Ordinal);
+            Assert.DoesNotContain("Resy AI", designerText, StringComparison.Ordinal);
+            Assert.DoesNotContain("Resy AI", ribbonCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void UploadGroupOmitsFullUploadButton()
+        {
+            var designerText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.Designer.cs"));
+
+            Assert.DoesNotContain("this.groupUpload.Items.Add(this.fullUploadButton);", designerText, StringComparison.Ordinal);
+            Assert.Contains("this.groupUpload.Items.Add(this.partialUploadButton);", designerText, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -128,14 +160,14 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
-        public void RefreshProjectDropDownPreservesStatusWhenNoProjectsAreAvailable()
+        public void RefreshProjectDropDownUsesNoProjectRestoreTextWhenNoProjectsAreAvailable()
         {
             var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
                 "src",
                 "OfficeAgent.ExcelAddIn",
                 "AgentRibbon.cs"));
 
-            Assert.Contains("if (projectOptionsByKey.Count == 0 && string.IsNullOrWhiteSpace(syncController.ActiveProjectId))", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("var noProjectRestoreText = GetNoProjectRestoreText(", ribbonCodeText, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -150,6 +182,18 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
+        public void PopulateProjectDropDownAddsPlaceholderItemBeforeLoadedProjects()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            Assert.Contains("AddProjectDropDownPlaceholderItem();", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("projectDropDown.Items.Add(CreateProjectDropDownItem(ProjectDropDownPlaceholderText, ProjectDropDownPlaceholderTag));", ribbonCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ProjectDropDownDisplaysItemTextInsteadOfSeparateControlCaption()
         {
             var designerText = File.ReadAllText(ResolveRepositoryPath(
@@ -161,18 +205,62 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
-        public void ProjectSelectorUsesTextValueForOfficeHostCompatibility()
+        public void ProjectSelectorUsesSelectedItemForOfficeHostCompatibility()
         {
             var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
                 "src",
                 "OfficeAgent.ExcelAddIn",
                 "AgentRibbon.cs"));
 
-            Assert.Contains("projectDropDown.Text = text ?? string.Empty;", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("projectDropDown.SelectedItem = selectedItem;", ribbonCodeText, StringComparison.Ordinal);
         }
 
         [Fact]
-        public void ProjectSelectorUsesComboBoxItemsLoadingToRefreshProjectsOnOpen()
+        public void ProjectSelectorInvalidatesRibbonControlAfterProgrammaticSelectionChanges()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            Assert.Contains("RibbonUI?.InvalidateControl(projectDropDown.Name);", ribbonCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ProjectSelectorEnsuresDropDownContainsDisplayItemBeforeSelectingIt()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            var methodStart = ribbonCodeText.IndexOf("private void SetProjectDropDownText(string text)", StringComparison.Ordinal);
+            var nextMethodStart = ribbonCodeText.IndexOf("private void AddProjectDropDownPlaceholderItem()", methodStart, StringComparison.Ordinal);
+
+            Assert.True(methodStart >= 0);
+            Assert.True(nextMethodStart > methodStart);
+
+            var methodBody = ribbonCodeText.Substring(methodStart, nextMethodStart - methodStart);
+            Assert.Contains("var selectedItem = EnsureProjectDropDownContainsDisplayItem(normalizedText);", methodBody, StringComparison.Ordinal);
+            Assert.Contains("projectDropDown.SelectedItem = selectedItem;", methodBody, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ProjectSelectorDefinesHelperToAddSyntheticDisplayItemWhenCurrentLabelIsMissing()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            Assert.Contains("private RibbonDropDownItem EnsureProjectDropDownContainsDisplayItem(string text)", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("var item = CreateProjectDropDownItem(displayText, BuildSyntheticProjectDropDownTag(displayText));", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("projectDropDown.Items.Add(item);", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("return item;", ribbonCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ProjectSelectorUsesDropDownItemsLoadingToRefreshProjectsOnOpen()
         {
             var designerText = File.ReadAllText(ResolveRepositoryPath(
                 "src",
@@ -184,7 +272,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 "AgentRibbon.cs"));
 
             Assert.Contains(
-                "this.projectDropDown = Factory.CreateRibbonComboBox();",
+                "this.projectDropDown = Factory.CreateRibbonDropDown();",
                 designerText,
                 StringComparison.Ordinal);
             Assert.Contains(
@@ -192,14 +280,117 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 designerText,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "this.projectDropDown.TextChanged += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.ProjectDropDown_TextChanged);",
+                "this.projectDropDown.SelectionChanged += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.ProjectDropDown_SelectionChanged);",
                 designerText,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("this.projectDropDown.ButtonClick +=", designerText, StringComparison.Ordinal);
             Assert.Contains("private void ProjectDropDown_ItemsLoading(object sender, RibbonControlEventArgs e)", ribbonCodeText, StringComparison.Ordinal);
-            Assert.Contains("private void ProjectDropDown_TextChanged(object sender, RibbonControlEventArgs e)", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("private void ProjectDropDown_SelectionChanged(object sender, RibbonControlEventArgs e)", ribbonCodeText, StringComparison.Ordinal);
             Assert.Contains("PopulateProjectDropDown();", ribbonCodeText, StringComparison.Ordinal);
             Assert.Contains("RefreshProjectDropDownFromController();", ribbonCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ActiveProjectChangeRebuildsExistingDropdownItemsBeforeRefreshingText()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            var methodStart = ribbonCodeText.IndexOf("private void SyncController_ActiveProjectChanged(object sender, EventArgs e)", StringComparison.Ordinal);
+            var nextMethodStart = ribbonCodeText.IndexOf("private void RestoreProjectDropDownFromController()", methodStart, StringComparison.Ordinal);
+
+            Assert.True(methodStart >= 0);
+            Assert.True(nextMethodStart > methodStart);
+
+            var methodBody = ribbonCodeText.Substring(methodStart, nextMethodStart - methodStart);
+            Assert.Contains("RebuildProjectDropDownItemsFromCurrentState();", methodBody, StringComparison.Ordinal);
+            Assert.Contains("RefreshProjectDropDownFromController();", methodBody, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ActiveProjectChangeWithoutBoundProjectResetsDropdownItemsToPlaceholderOnly()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            var methodStart = ribbonCodeText.IndexOf("private void SyncController_ActiveProjectChanged(object sender, EventArgs e)", StringComparison.Ordinal);
+            var nextMethodStart = ribbonCodeText.IndexOf("private void RestoreProjectDropDownFromController()", methodStart, StringComparison.Ordinal);
+
+            Assert.True(methodStart >= 0);
+            Assert.True(nextMethodStart > methodStart);
+
+            var methodBody = ribbonCodeText.Substring(methodStart, nextMethodStart - methodStart);
+            Assert.Contains("string.IsNullOrWhiteSpace(syncController?.ActiveProjectId)", methodBody, StringComparison.Ordinal);
+            Assert.Contains("ResetProjectDropDownItemsToPlaceholderOnly();", methodBody, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void DropdownItemRebuildClearsAndReaddsExistingItemsWithoutReloadingProjects()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            Assert.Contains("private void RebuildProjectDropDownItemsFromCurrentState()", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("projectDropDown.Items.Clear();", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("AddProjectDropDownPlaceholderItem();", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("projectDropDown.Items.Add(CreateProjectDropDownItem(item.Label, item.Tag));", ribbonCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PlaceholderResetClearsProjectItemsAndKeepsOnlyPlaceholder()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            Assert.Contains("private void ResetProjectDropDownItemsToPlaceholderOnly()", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("projectDropDown.Items.Clear();", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("AddProjectDropDownPlaceholderItem();", ribbonCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ProjectSelectionLeavesDropdownResetToControllerRefreshFlow()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            var methodStart = ribbonCodeText.IndexOf("private void ProjectDropDown_SelectionChanged(object sender, RibbonControlEventArgs e)", StringComparison.Ordinal);
+            var nextMethodStart = ribbonCodeText.IndexOf("internal void BindToSyncControllerAndRefresh()", methodStart, StringComparison.Ordinal);
+
+            Assert.True(methodStart >= 0);
+            Assert.True(nextMethodStart > methodStart);
+
+            var methodBody = ribbonCodeText.Substring(methodStart, nextMethodStart - methodStart);
+            Assert.Contains("Globals.ThisAddIn.RibbonSyncController?.SelectProject(project);", methodBody, StringComparison.Ordinal);
+            Assert.DoesNotContain("SetProjectDropDownText(", methodBody, StringComparison.Ordinal);
+            Assert.DoesNotContain("RefreshProjectDropDownFromController();", methodBody, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ProjectSelectionRestoresControllerDisplayForMissingOrUnknownSelectionViaWrapper()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            var methodStart = ribbonCodeText.IndexOf("private void ProjectDropDown_SelectionChanged(object sender, RibbonControlEventArgs e)", StringComparison.Ordinal);
+            var nextMethodStart = ribbonCodeText.IndexOf("internal void BindToSyncControllerAndRefresh()", methodStart, StringComparison.Ordinal);
+
+            Assert.True(methodStart >= 0);
+            Assert.True(nextMethodStart > methodStart);
+
+            var methodBody = ribbonCodeText.Substring(methodStart, nextMethodStart - methodStart);
+            Assert.Contains("RestoreProjectDropDownFromController();", methodBody, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -218,8 +409,21 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             var loadMethodText = ribbonCodeText.Substring(methodStart, nextMethodStart - methodStart);
             Assert.DoesNotContain("PopulateProjectDropDown();", loadMethodText, StringComparison.Ordinal);
+            Assert.Contains("if (!TryBindToSyncController())", loadMethodText, StringComparison.Ordinal);
             Assert.Contains("syncController.RefreshActiveProjectFromSheetMetadata();", loadMethodText, StringComparison.Ordinal);
             Assert.Contains("RefreshProjectDropDownFromController();", loadMethodText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RibbonDefinesLazyControllerBindingHelperForStartupOrdering()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            Assert.Contains("private bool TryBindToSyncController()", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("syncController.ActiveProjectChanged += SyncController_ActiveProjectChanged;", ribbonCodeText, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -232,9 +436,142 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             Assert.Contains("Application.SheetChange += Application_SheetChange;", addInCodeText, StringComparison.Ordinal);
             Assert.Contains("private void Application_SheetChange(object sh, ExcelInterop.Range target)", addInCodeText, StringComparison.Ordinal);
-            Assert.Contains("string.Equals(sheetName, \"_Settings\", StringComparison.OrdinalIgnoreCase)", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("string.Equals(sheetName, \"AI_Setting\", StringComparison.OrdinalIgnoreCase)", addInCodeText, StringComparison.Ordinal);
             Assert.Contains("metadataStore.InvalidateCache();", addInCodeText, StringComparison.Ordinal);
             Assert.Contains("RibbonSyncController?.InvalidateRefreshState();", addInCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ThisAddInRefreshesRibbonProjectWhenActiveSheetChanges()
+        {
+            var addInCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "ThisAddIn.cs"));
+
+            Assert.Contains("Application.SheetActivate += Application_SheetActivate;", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("Application.SheetActivate -= Application_SheetActivate;", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("private void Application_SheetActivate(object sh)", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("var sheetName = GetWorksheetName(sh);", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("RibbonSyncController?.RefreshProjectFromSheetMetadata(sheetName);", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("lastProjectRefreshSheetName = sheetName;", addInCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ThisAddInRefreshesRibbonProjectWhenWorkbookActivatesAfterStartup()
+        {
+            var addInCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "ThisAddIn.cs"));
+
+            Assert.Contains("Application.WorkbookActivate += Application_WorkbookActivate;", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("Application.WorkbookActivate -= Application_WorkbookActivate;", addInCodeText, StringComparison.Ordinal);
+
+            var methodStart = addInCodeText.IndexOf(
+                "private void Application_WorkbookActivate(ExcelInterop.Workbook wb)",
+                StringComparison.Ordinal);
+            var nextMethodStart = addInCodeText.IndexOf(
+                "private void Application_SheetChange(object sh, ExcelInterop.Range target)",
+                methodStart,
+                StringComparison.Ordinal);
+
+            Assert.True(methodStart >= 0);
+            Assert.True(nextMethodStart > methodStart);
+
+            var methodBody = addInCodeText.Substring(methodStart, nextMethodStart - methodStart);
+            Assert.Contains("RibbonSyncController?.InvalidateRefreshState();", methodBody, StringComparison.Ordinal);
+            Assert.Contains("RibbonSyncController?.RefreshActiveProjectFromSheetMetadata();", methodBody, StringComparison.Ordinal);
+            Assert.Contains("lastProjectRefreshSheetName = GetActiveWorksheetName();", methodBody, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ThisAddInBindsRibbonToControllerAfterStartupInitialization()
+        {
+            var addInCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "ThisAddIn.cs"));
+
+            Assert.Contains("Globals.Ribbons", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("BindToSyncControllerAndRefresh()", addInCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ThisAddInIgnoresSelectionChangeEventsFromNonActiveSheets()
+        {
+            var addInCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "ThisAddIn.cs"));
+
+            Assert.Contains("var activeSheetName = GetActiveWorksheetName();", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("!string.Equals(sheetName, activeSheetName, StringComparison.OrdinalIgnoreCase)", addInCodeText, StringComparison.Ordinal);
+            Assert.Contains("OfficeAgentLog.Info(\"excel\", \"selection.changed\", \"Excel selection changed.\");", addInCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RibbonControllerDoesNotAutoInitializeWhenProjectIsSelected()
+        {
+            var ribbonControllerText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "RibbonSyncController.cs"));
+
+            Assert.DoesNotContain("TryAutoInitializeCurrentSheet(sheetName, project);", ribbonControllerText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ProjectDropDownLabelsIncludeProjectIdPrefix()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            Assert.Contains("project?.ProjectId ?? string.Empty", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("project?.DisplayName ?? string.Empty", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Contains("-", ribbonCodeText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RefreshProjectDropDownFormatsSelectedProjectWhenCurrentListDoesNotContainIt()
+        {
+            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.cs"));
+
+            Assert.Contains(
+                "FormatProjectDropDownLabel(syncController.ActiveProjectId, syncController.ActiveProjectDisplayName)",
+                ribbonCodeText,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void NoProjectRestoreTextUsesLastControllerOwnedStatusWhenNoItemsAndNoActiveProject()
+        {
+            var addInAssembly = Assembly.LoadFrom(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "bin",
+                "Debug",
+                "OfficeAgent.ExcelAddIn.dll"));
+            var ribbonType = addInAssembly.GetType("OfficeAgent.ExcelAddIn.AgentRibbon", throwOnError: true);
+            var method = ribbonType.GetMethod("GetNoProjectRestoreText", BindingFlags.Static | BindingFlags.NonPublic);
+
+            Assert.NotNull(method);
+            Assert.Equal(
+                "请先登录",
+                (string)method.Invoke(null, new object[] { 0, string.Empty, "请先登录" }));
+            Assert.Equal(
+                "先选择项目",
+                (string)method.Invoke(null, new object[] { 0, string.Empty, string.Empty }));
+            Assert.Equal(
+                "先选择项目",
+                (string)method.Invoke(null, new object[] { 0, string.Empty, "proj-a-项目A" }));
+            Assert.Null(method.Invoke(null, new object[] { 1, string.Empty, "请先登录" }));
+            Assert.Null(method.Invoke(null, new object[] { 0, "project-1", "请先登录" }));
         }
 
         private static string ResolveRepositoryPath(params string[] segments)

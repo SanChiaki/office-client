@@ -651,7 +651,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
-        public void ExecuteFullDownloadAutoReinitializesWhenStoredMappingsLackUsableIdDefinition()
+        public void PrepareFullDownloadRequiresExplicitInitializationWhenStoredMappingsAreUnusable()
         {
             var connector = new FakeSystemConnector();
             var metadataStore = new FakeWorksheetMetadataStore();
@@ -669,20 +669,13 @@ namespace OfficeAgent.ExcelAddIn.Tests
             metadataStore.FieldMappings["Sheet1"] = BuildLegacyMappingsWithoutIdFlag("Sheet1");
             connector.FindResult = new[] { CreateRow("row-1", "张三", "2026-01-02", "2026-01-05") };
 
-            var (service, grid) = CreateService(connector, metadataStore, new FakeWorksheetSelectionReader());
+            var (service, _) = CreateService(connector, metadataStore, new FakeWorksheetSelectionReader());
 
-            var plan = InvokePrepare(service, "PrepareFullDownload", "Sheet1");
-            InvokeExecute(service, "ExecuteDownload", plan);
-
-            Assert.Equal(3, metadataStore.LastSavedBinding.HeaderStartRow);
-            Assert.Equal(2, metadataStore.LastSavedBinding.HeaderRowCount);
-            Assert.Equal(6, metadataStore.LastSavedBinding.DataStartRow);
-            Assert.Contains(
-                metadataStore.LastSavedFieldMappings,
-                row => string.Equals(row.Values["ApiFieldKey"], "row_id", StringComparison.Ordinal) &&
-                       string.Equals(row.Values["IsIdColumn"], "true", StringComparison.OrdinalIgnoreCase));
-            Assert.Equal("row-1", grid.GetCell("Sheet1", 6, 1));
-            Assert.Equal("张三", grid.GetCell("Sheet1", 6, 2));
+            var exception = Assert.Throws<TargetInvocationException>(() => InvokePrepare(service, "PrepareFullDownload", "Sheet1"));
+            var inner = Assert.IsType<InvalidOperationException>(exception.InnerException);
+            Assert.Contains("当前 sheet 未初始化，请先执行初始化当前表。", inner.Message);
+            Assert.Null(metadataStore.LastSavedBinding);
+            Assert.Empty(metadataStore.LastSavedFieldMappings);
         }
 
         [Fact]
