@@ -159,7 +159,7 @@ describe('App shell', () => {
       screen.getByRole('region', { name: /message thread/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/欢迎使用\s*Resy AI/),
+      screen.getByText(/欢迎使用\s*ISDP/),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('status', { name: /selection capsule/i }),

@@ -20,7 +20,7 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
 
             var result = MessageBox.Show(
                 builder.ToString(),
-                "Resy AI",
+                "ISDP",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question,
                 MessageBoxDefaultButton.Button2);

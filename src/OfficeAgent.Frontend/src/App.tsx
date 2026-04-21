@@ -802,7 +802,7 @@ export function App() {
               <MenuIcon />
             </button>
 
-            <h1 className="title">{activeSession?.title ?? 'Resy AI'}</h1>
+            <h1 className="title">{activeSession?.title ?? 'ISDP'}</h1>
           </div>
 
           <button
@@ -1153,7 +1153,7 @@ function createInitialThreadMessages(session?: ChatSession): ThreadMessage[] {
     {
       id: 'welcome-message',
       role: 'assistant',
-      content: '欢迎使用Resy AI，我是能和Excel交互的Agent。你选中的单元格会被我优先识别，尽情尝试吧~',
+      content: '欢迎使用ISDP，我是能和Excel交互的Agent。你选中的单元格会被我优先识别，尽情尝试吧~',
     },
   ];
 }

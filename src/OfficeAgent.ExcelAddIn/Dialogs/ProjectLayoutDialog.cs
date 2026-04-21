@@ -108,7 +108,7 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
                 out var binding,
                 out var errorMessage))
             {
-                MessageBox.Show(this, errorMessage, "Resy AI", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, errorMessage, "ISDP", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 

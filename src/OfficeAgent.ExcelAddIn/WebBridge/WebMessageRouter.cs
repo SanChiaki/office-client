@@ -120,7 +120,7 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                     request.Type,
                     request.RequestId,
                     code: "internal_error",
-                    message: "OfficeAgent hit an unexpected error. Check the local log and try again.");
+                    message: "ISDP hit an unexpected error. Check the local log and try again.");
             }
 
             return JsonConvert.SerializeObject(response, SerializerSettings);
@@ -184,7 +184,7 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                             request.RequestId,
                             new PingPayload
                             {
-                                Host = "Resy AI",
+                                Host = "ISDP",
                                 Version = VersionInfo.AppVersion,
                             });
                     case BridgeMessageTypes.GetSettings:
@@ -255,7 +255,7 @@ namespace OfficeAgent.ExcelAddIn.WebBridge
                     request.Type,
                     request.RequestId,
                     code: "internal_error",
-                    message: "OfficeAgent hit an unexpected error. Check the local log and try again.");
+                    message: "ISDP hit an unexpected error. Check the local log and try again.");
             }
         }
 

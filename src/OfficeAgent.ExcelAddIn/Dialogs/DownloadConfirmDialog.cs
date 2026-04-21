@@ -34,7 +34,7 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
 
             var result = MessageBox.Show(
                 builder.ToString(),
-                "Resy AI",
+                "ISDP",
                 MessageBoxButtons.YesNo,
                 dirtyCount > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Question,
                 dirtyCount > 0 ? MessageBoxDefaultButton.Button2 : MessageBoxDefaultButton.Button1);

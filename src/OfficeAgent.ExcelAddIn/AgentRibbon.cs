@@ -64,7 +64,7 @@ namespace OfficeAgent.ExcelAddIn
 
             if (string.IsNullOrWhiteSpace(ssoUrl))
             {
-                MessageBox.Show("\u8BF7\u5148\u5728\u8BBE\u7F6E\u4E2D\u914D\u7F6E SSO \u5730\u5740\u3002", "Resy AI", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("\u8BF7\u5148\u5728\u8BBE\u7F6E\u4E2D\u914D\u7F6E SSO \u5730\u5740\u3002", "ISDP", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -263,12 +263,12 @@ namespace OfficeAgent.ExcelAddIn
                 $"Scheduling project dropdown warning. SynchronizationContext={syncContext?.GetType().FullName ?? "null"}; Message={message}");
             if (syncContext == null)
             {
-                MessageBox.Show(message, "Resy AI", MessageBoxButtons.OK, icon);
+                MessageBox.Show(message, "ISDP", MessageBoxButtons.OK, icon);
                 return;
             }
 
             syncContext.Post(
-                _ => MessageBox.Show(message, "Resy AI", MessageBoxButtons.OK, icon),
+                _ => MessageBox.Show(message, "ISDP", MessageBoxButtons.OK, icon),
                 state: null);
         }
 

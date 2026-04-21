@@ -51,18 +51,18 @@ namespace OfficeAgent.ExcelAddIn
             this.tab1.Groups.Add(this.groupDownload);
             this.tab1.Groups.Add(this.groupUpload);
             this.tab1.Groups.Add(this.group2);
-            this.tab1.Label = "Resy AI";
+            this.tab1.Label = "ISDP";
             this.tab1.Name = "tab1";
             // 
             // group1
             // 
             this.group1.Items.Add(this.toggleTaskPaneButton);
-            this.group1.Label = "Resy AI";
+            this.group1.Label = "ISDP";
             this.group1.Name = "groupAgent";
             // 
             // toggleTaskPaneButton
             // 
-            this.toggleTaskPaneButton.Label = "Resy AI";
+            this.toggleTaskPaneButton.Label = "ISDP";
             this.toggleTaskPaneButton.Name = "openTaskPaneButton";
             this.toggleTaskPaneButton.ShowImage = false;
             this.toggleTaskPaneButton.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.ToggleTaskPaneButton_Click);
@@ -110,7 +110,6 @@ namespace OfficeAgent.ExcelAddIn
             // 
             // groupUpload
             // 
-            this.groupUpload.Items.Add(this.fullUploadButton);
             this.groupUpload.Items.Add(this.partialUploadButton);
             this.groupUpload.Label = "\u4E0A\u4F20";
             this.groupUpload.Name = "groupUpload";

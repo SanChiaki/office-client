@@ -67,7 +67,7 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
                 Controls.Add(new Label
                 {
                     Dock = DockStyle.Fill,
-                    Text = "WebView2 Runtime is required to render OfficeAgent.",
+                    Text = "WebView2 Runtime is required to render ISDP.",
                     TextAlign = System.Drawing.ContentAlignment.MiddleCenter
                 });
             }
@@ -78,7 +78,7 @@ namespace OfficeAgent.ExcelAddIn.TaskPane
                 Controls.Add(new Label
                 {
                     Dock = DockStyle.Fill,
-                    Text = "Resy AI could not initialize the task pane. Check the local log and reopen Excel.",
+                    Text = "ISDP could not initialize the task pane. Check the local log and reopen Excel.",
                     TextAlign = System.Drawing.ContentAlignment.MiddleCenter
                 });
             }

@@ -32,7 +32,7 @@ namespace OfficeAgent.ExcelAddIn
             MaximizeBox = true;
             MinimizeBox = true;
             StartPosition = FormStartPosition.CenterScreen;
-            Text = "Resy AI - \u767B\u5F55";
+            Text = "ISDP - \u767B\u5F55";
             Size = new System.Drawing.Size(1024, 700);
             MinimumSize = new System.Drawing.Size(600, 400);
 

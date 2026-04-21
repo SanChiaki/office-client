@@ -70,8 +70,8 @@
 - Start Excel while unauthenticated against a protected project API and confirm the project dropdown shows `请先登录`.
 - Configure the project API to return an empty array and confirm the project dropdown shows `无可用项目`.
 - Click `初始化当前表` on a sheet that already contains business cells and confirm only `AI_Setting` changes; the business area should remain untouched.
-- Click `全量下载`, `部分下载`, `全量上传`, and `部分上传` and confirm each action uses a native Office/WinForms confirmation dialog instead of the task pane.
-- Confirm the `下载` and `上传` controls are rendered in separate Ribbon groups, and that there is no `增量上传` button.
+- Click `全量下载`, `部分下载`, and `部分上传` and confirm each action uses a native Office/WinForms confirmation dialog instead of the task pane.
+- Confirm the `下载` and `上传` controls are rendered in separate Ribbon groups, that the upload group only shows `部分上传`, and that there is no `全量上传` or `增量上传` button.
 - Edit `AI_Setting` so `HeaderStartRow = 3`, `HeaderRowCount = 2`, and `DataStartRow = 6`, then run `全量下载` and confirm headers/data are written at the configured rows.
 - On a sheet that already has recognizable headers, run `全量下载` and confirm the plugin refreshes data cells without rewriting those existing headers.
 - Modify a current display name in `SheetFieldMappings`, update the matching Excel header text manually, then run `部分下载` or `部分上传` and confirm the column still resolves by current header text.
