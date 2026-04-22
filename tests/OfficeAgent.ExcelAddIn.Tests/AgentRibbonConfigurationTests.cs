@@ -38,7 +38,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
-        public void RibbonBrandingUsesIsdp()
+        public void RibbonTabStaysIsdpWhileAgentGroupUsesIsdpAi()
         {
             var designerText = File.ReadAllText(ResolveRepositoryPath(
                 "src",
@@ -50,8 +50,8 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 "AgentRibbon.cs"));
 
             Assert.Contains("this.tab1.Label = \"ISDP\";", designerText, StringComparison.Ordinal);
-            Assert.Contains("this.group1.Label = \"ISDP\";", designerText, StringComparison.Ordinal);
-            Assert.Contains("this.toggleTaskPaneButton.Label = \"ISDP\";", designerText, StringComparison.Ordinal);
+            Assert.Contains("this.group1.Label = \"ISDP AI\";", designerText, StringComparison.Ordinal);
+            Assert.Contains("this.toggleTaskPaneButton.Label = \"ISDP AI\";", designerText, StringComparison.Ordinal);
             Assert.DoesNotContain("Resy AI", designerText, StringComparison.Ordinal);
             Assert.DoesNotContain("Resy AI", ribbonCodeText, StringComparison.Ordinal);
         }
@@ -66,6 +66,18 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             Assert.DoesNotContain("this.groupUpload.Items.Add(this.fullUploadButton);", designerText, StringComparison.Ordinal);
             Assert.Contains("this.groupUpload.Items.Add(this.partialUploadButton);", designerText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void DownloadGroupOmitsFullDownloadButton()
+        {
+            var designerText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.Designer.cs"));
+
+            Assert.DoesNotContain("this.groupDownload.Items.Add(this.fullDownloadButton);", designerText, StringComparison.Ordinal);
+            Assert.Contains("this.groupDownload.Items.Add(this.partialDownloadButton);", designerText, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -202,6 +214,17 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 "AgentRibbon.Designer.cs"));
 
             Assert.Contains("this.projectDropDown.ShowLabel = false;", designerText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ProjectDropDownUsesWideSizingStringToExpandProjectRibbonGroup()
+        {
+            var designerText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "AgentRibbon.Designer.cs"));
+
+            Assert.Contains("this.projectDropDown.SizeString =", designerText, StringComparison.Ordinal);
         }
 
         [Fact]

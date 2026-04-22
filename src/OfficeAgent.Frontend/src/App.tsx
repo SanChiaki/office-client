@@ -802,7 +802,7 @@ export function App() {
               <MenuIcon />
             </button>
 
-            <h1 className="title">{activeSession?.title ?? 'ISDP'}</h1>
+            <h1 className="title">{activeSession?.title ?? 'ISDP AI'}</h1>
           </div>
 
           <button

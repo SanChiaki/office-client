@@ -57,12 +57,12 @@ namespace OfficeAgent.ExcelAddIn
             // group1
             // 
             this.group1.Items.Add(this.toggleTaskPaneButton);
-            this.group1.Label = "ISDP";
+            this.group1.Label = "ISDP AI";
             this.group1.Name = "groupAgent";
             // 
             // toggleTaskPaneButton
             // 
-            this.toggleTaskPaneButton.Label = "ISDP";
+            this.toggleTaskPaneButton.Label = "ISDP AI";
             this.toggleTaskPaneButton.Name = "openTaskPaneButton";
             this.toggleTaskPaneButton.ShowImage = false;
             this.toggleTaskPaneButton.Click += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.ToggleTaskPaneButton_Click);
@@ -78,6 +78,7 @@ namespace OfficeAgent.ExcelAddIn
             // 
             this.projectDropDown.Label = "\u5148\u9009\u62E9\u9879\u76EE";
             this.projectDropDown.Name = "projectDropDown";
+            this.projectDropDown.SizeString = "WWWWWWWWWWWWWWWWWWWW";
             this.projectDropDown.ShowItemLabel = true;
             this.projectDropDown.ShowLabel = false;
             this.projectDropDown.ItemsLoading += new Microsoft.Office.Tools.Ribbon.RibbonControlEventHandler(this.ProjectDropDown_ItemsLoading);
@@ -91,7 +92,6 @@ namespace OfficeAgent.ExcelAddIn
             // 
             // groupDownload
             // 
-            this.groupDownload.Items.Add(this.fullDownloadButton);
             this.groupDownload.Items.Add(this.partialDownloadButton);
             this.groupDownload.Label = "\u4E0B\u8F7D";
             this.groupDownload.Name = "groupDownload";

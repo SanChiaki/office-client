@@ -225,6 +225,37 @@ describe('App shell', () => {
     ).toHaveValue('gpt-5-mini');
   });
 
+  it('uses ISDP AI as the fallback panel title before sessions load', async () => {
+    const sessionsDeferred = createDeferred<{
+      activeSessionId: string;
+      sessions: Array<{
+        id: string;
+        title: string;
+        createdAtUtc: string;
+        updatedAtUtc: string;
+        messages: never[];
+      }>;
+    }>();
+    mockedBridge.getSessions.mockReturnValueOnce(sessionsDeferred.promise);
+
+    render(<App />);
+
+    expect(await screen.findByText(/ISDP AI/i, { selector: 'h1' })).toBeInTheDocument();
+
+    sessionsDeferred.resolve({
+      activeSessionId: 'loaded-session',
+      sessions: [
+        {
+          id: 'loaded-session',
+          title: 'Loaded session',
+          createdAtUtc: '2026-03-29T00:00:00.0000000Z',
+          updatedAtUtc: '2026-03-29T00:00:00.0000000Z',
+          messages: [],
+        },
+      ],
+    });
+  });
+
   it('saves business base url independently from the llm base url', async () => {
     const user = userEvent.setup();
 
