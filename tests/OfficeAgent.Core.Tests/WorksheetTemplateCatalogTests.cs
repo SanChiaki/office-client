@@ -63,6 +63,32 @@ namespace OfficeAgent.Core.Tests
         }
 
         [Fact]
+        public void SaveSheetAsNewTemplateSucceedsWhenCurrentSheetHasNoExistingTemplateBinding()
+        {
+            var metadataStore = new FakeWorksheetMetadataStore();
+            var templateBindingStore = new LoadThrowingButSavingWorksheetTemplateBindingStore();
+            var templateStore = new FakeTemplateStore();
+            metadataStore.Bindings["Sheet-Now"] = CreateBinding("Sheet-Now", "system-a", "project-a", "项目A");
+            metadataStore.FieldMappings["Sheet-Now"] = CreateFieldMappings("Sheet-Now");
+            var catalog = new WorksheetTemplateCatalog(
+                new SystemConnectorRegistry(new[] { new FakeSystemConnector("system-a") }),
+                metadataStore,
+                templateBindingStore,
+                templateStore);
+
+            catalog.SaveSheetAsNewTemplate("Sheet-Now", "模板新版本");
+
+            var savedTemplate = Assert.Single(templateStore.SaveNewCalls);
+            var savedTemplateBinding = Assert.Single(templateBindingStore.SavedBindings);
+            Assert.Equal("store-template", savedTemplateBinding.TemplateOrigin);
+            Assert.Equal(savedTemplate.TemplateId, savedTemplateBinding.TemplateId);
+            Assert.Equal("模板新版本", savedTemplateBinding.TemplateName);
+            Assert.Equal(1, savedTemplateBinding.TemplateRevision);
+            Assert.Equal(string.Empty, savedTemplateBinding.DerivedFromTemplateId);
+            Assert.Null(savedTemplateBinding.DerivedFromTemplateRevision);
+        }
+
+        [Fact]
         public void GetSheetStateMarksDirtyWhenFingerprintDiffersFromAppliedFingerprint()
         {
             var metadataStore = new FakeWorksheetMetadataStore();
@@ -213,6 +239,28 @@ namespace OfficeAgent.Core.Tests
             Assert.False(state.CanSaveTemplate);
             Assert.False(state.IsDirty);
             Assert.False(state.TemplateMissing);
+        }
+
+        [Fact]
+        public void GetSheetStateTreatsMissingTemplateBindingAsAdHocWhenBindingStoreThrows()
+        {
+            var metadataStore = new FakeWorksheetMetadataStore();
+            var templateStore = new FakeTemplateStore();
+            metadataStore.Bindings["Sheet-Now"] = CreateBinding("Sheet-Now", "system-a", "project-a", "项目A");
+            var catalog = new WorksheetTemplateCatalog(
+                new SystemConnectorRegistry(new[] { new FakeSystemConnector("system-a") }),
+                metadataStore,
+                new ThrowingWorksheetTemplateBindingStore(),
+                templateStore);
+
+            var state = catalog.GetSheetState("Sheet-Now");
+
+            Assert.True(state.HasProjectBinding);
+            Assert.True(state.CanApplyTemplate);
+            Assert.True(state.CanSaveAsTemplate);
+            Assert.False(state.CanSaveTemplate);
+            Assert.Equal(string.Empty, state.TemplateId);
+            Assert.Equal(string.Empty, state.TemplateOrigin);
         }
 
         [Fact]
@@ -580,6 +628,44 @@ namespace OfficeAgent.Core.Tests
             public void ClearTemplateBinding(string sheetName)
             {
                 TemplateBindings.Remove(sheetName);
+            }
+        }
+
+        private sealed class ThrowingWorksheetTemplateBindingStore : IWorksheetTemplateBindingStore
+        {
+            public void SaveTemplateBinding(SheetTemplateBinding binding)
+            {
+                throw new NotSupportedException();
+            }
+
+            public SheetTemplateBinding LoadTemplateBinding(string sheetName)
+            {
+                throw new InvalidOperationException("No template binding.");
+            }
+
+            public void ClearTemplateBinding(string sheetName)
+            {
+                throw new NotSupportedException();
+            }
+        }
+
+        private sealed class LoadThrowingButSavingWorksheetTemplateBindingStore : IWorksheetTemplateBindingStore
+        {
+            public List<SheetTemplateBinding> SavedBindings { get; } = new List<SheetTemplateBinding>();
+
+            public void SaveTemplateBinding(SheetTemplateBinding binding)
+            {
+                SavedBindings.Add(binding);
+            }
+
+            public SheetTemplateBinding LoadTemplateBinding(string sheetName)
+            {
+                throw new InvalidOperationException("No template binding.");
+            }
+
+            public void ClearTemplateBinding(string sheetName)
+            {
+                throw new NotSupportedException();
             }
         }
 

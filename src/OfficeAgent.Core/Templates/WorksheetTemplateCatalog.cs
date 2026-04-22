@@ -50,8 +50,7 @@ namespace OfficeAgent.Core.Templates
             state.CanSaveAsTemplate = true;
             state.ProjectDisplayName = binding.ProjectName ?? string.Empty;
 
-            var templateBinding = worksheetTemplateBindingStore.LoadTemplateBinding(sheetName);
-            if (templateBinding == null)
+            if (!TryLoadTemplateBinding(sheetName, out var templateBinding))
             {
                 return state;
             }
@@ -179,7 +178,7 @@ namespace OfficeAgent.Core.Templates
                 timestamp,
                 timestamp);
             var savedTemplate = templateStore.SaveNew(snapshot);
-            var previousBinding = worksheetTemplateBindingStore.LoadTemplateBinding(sheetName);
+            TryLoadTemplateBinding(sheetName, out var previousBinding);
 
             var derivedFromTemplateId = previousBinding?.DerivedFromTemplateId ?? string.Empty;
             var derivedFromTemplateRevision = previousBinding?.DerivedFromTemplateRevision;
@@ -310,6 +309,20 @@ namespace OfficeAgent.Core.Templates
             catch (InvalidOperationException)
             {
                 binding = null;
+                return false;
+            }
+        }
+
+        private bool TryLoadTemplateBinding(string sheetName, out SheetTemplateBinding templateBinding)
+        {
+            try
+            {
+                templateBinding = worksheetTemplateBindingStore.LoadTemplateBinding(sheetName);
+                return templateBinding != null;
+            }
+            catch (InvalidOperationException)
+            {
+                templateBinding = null;
                 return false;
             }
         }

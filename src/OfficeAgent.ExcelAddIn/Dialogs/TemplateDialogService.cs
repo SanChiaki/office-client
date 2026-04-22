@@ -26,30 +26,32 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
     {
         public string ShowTemplatePicker(string projectDisplayName, IReadOnlyList<TemplateDefinition> templates)
         {
-            return string.Empty;
+            using (var dialog = new TemplatePickerDialog(projectDisplayName, templates))
+            {
+                return dialog.ShowDialog() == DialogResult.OK
+                    ? dialog.SelectedTemplateId
+                    : string.Empty;
+            }
         }
 
         public string ShowSaveAsTemplateDialog(string suggestedTemplateName)
         {
-            return string.Empty;
+            using (var dialog = new TemplateNameDialog(suggestedTemplateName))
+            {
+                return dialog.ShowDialog() == DialogResult.OK
+                    ? dialog.TemplateName
+                    : string.Empty;
+            }
         }
 
         public bool ConfirmApplyTemplateOverwrite(string templateName)
         {
-            return MessageBox.Show(
-                    $"当前表存在未保存的模板改动，确认用模板“{templateName}”覆盖吗？",
-                    "ISDP",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning) == DialogResult.Yes;
+            return TemplateOverwriteConfirmDialog.Confirm(templateName);
         }
 
         public DialogResult ShowTemplateRevisionConflictDialog(string templateName, int sheetRevision, int storedRevision)
         {
-            return MessageBox.Show(
-                $"模板“{templateName}”已从版本 {sheetRevision} 更新到版本 {storedRevision}。\r\n是：覆盖原模板\r\n否：另存为新模板\r\n取消：终止操作",
-                "ISDP",
-                MessageBoxButtons.YesNoCancel,
-                MessageBoxIcon.Warning);
+            return TemplateRevisionConflictDialog.ShowDecision(templateName, sheetRevision, storedRevision);
         }
 
         public void ShowInfo(string message)
