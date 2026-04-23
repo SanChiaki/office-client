@@ -124,7 +124,8 @@ Ribbon 点击链路：
 - 当前 sheet 没有绑定时，下拉框显示 `先选择项目`
 - 项目接口返回有效列表时，下拉框显示 `ProjectId-displayName` 形式的项目条目
 - 重选当前已绑定的同一个 `systemKey + projectId` 时是 no-op：不会弹出布局对话框，也不会重写 `SheetBindings`
-- 项目接口返回 `401 Unauthorized` 时，连接器应转成可读的“请先登录”错误，Ribbon 会显示 `请先登录`
+- 项目接口返回 `401 Unauthorized` 或 `403 Forbidden` 时，Ribbon 会显示 `请先登录`
+- 当项目接口因未登录返回 `401/403` 时，会弹出 `当前未登录，请先登录` 提示框，用户可点击 `点我登录` 直接触发 Ribbon 登录；登录成功后会立即重载项目列表
 - 项目接口返回空数组时，Ribbon 会显示 `无可用项目`
 - 项目接口发生其他异常时，Ribbon 会显示 `项目加载失败`
 
@@ -133,6 +134,19 @@ Ribbon 点击链路：
 - 未登录时的返回状态码
 - 空项目列表是不是合法业务状态
 - 是否必须先经过 SSO 登录才能访问项目列表
+
+认证失败接入合同：
+
+- Ribbon 项目下拉框不会直接根据 HTTP 状态码判断“未登录”；它只会在连接器最终抛出 `AuthenticationRequiredException` 时弹出登录提示
+- `SystemConnectorRegistry` 只负责聚合各个连接器的 `GetProjects()` 返回值和异常，不会把其他异常类型翻译成“未登录”
+- 因此真实连接器的 `GetProjects()` 在遇到未登录或无权限场景时，至少应把 `401/403` 统一转换成 `AuthenticationRequiredException("当前未登录，请先登录")`
+- 如果连接器抛出的是普通 `InvalidOperationException`、`HttpRequestException` 或其他异常，Ribbon 会把它当成普通项目加载失败处理，不会出现 `点我登录`
+
+相关代码入口：
+
+- [src/OfficeAgent.ExcelAddIn/AgentRibbon.cs](../src/OfficeAgent.ExcelAddIn/AgentRibbon.cs)
+- [src/OfficeAgent.Core/Services/SystemConnectorRegistry.cs](../src/OfficeAgent.Core/Services/SystemConnectorRegistry.cs)
+- [src/OfficeAgent.Core/AuthenticationRequiredException.cs](../src/OfficeAgent.Core/AuthenticationRequiredException.cs)
 
 对应模型：
 
@@ -239,6 +253,21 @@ Ribbon 点击链路：
 当前上传不是按整行提交，而是按单元格提交 `CellChange`。
 
 也就是说，真实系统如果只有“整行更新”接口，需要在连接器内部把这些单元格改动聚合成目标系统所需 payload，不要把这个复杂度上推到 Excel 层。
+
+### 4.7 认证失败异常约定
+
+当前 Ribbon Sync 的登录引导是“异常类型驱动”的，而不是“HTTP 状态码驱动”的。
+
+对真实系统连接器，至少应统一下面几条：
+
+- `GetProjects()` 里的 `401/403` 要转换成 `AuthenticationRequiredException("当前未登录，请先登录")`
+- `BuildFieldMappingSeed()` 里的 `401/403` 也要转换成同样的异常；这样 `初始化当前表` 才会弹登录提示，而不是普通错误
+- `Find()` 和 `BatchSave()` 里的 `401/403` 也要转换成同样的异常；这样 `部分下载`、`部分上传` 才会走统一的登录引导
+- 登录成功后，项目列表场景会自动重载项目；初始化、下载、上传不会自动重试，用户需要重新触发一次
+
+建议直接参考当前示例连接器的处理方式：
+
+- [src/OfficeAgent.Infrastructure/Http/CurrentBusinessSystemConnector.cs](../src/OfficeAgent.Infrastructure/Http/CurrentBusinessSystemConnector.cs)
 
 ## 5. 当前业务系统的接入模式
 
@@ -390,7 +419,8 @@ Ribbon 点击链路：
 5. 让连接器先跑通 `GetProjects -> BuildFieldMappingSeed -> Find -> BatchSave`
 6. 再在 `ThisAddIn` 中注册或切换连接器实例
 7. 在 Excel 中执行一次 `初始化当前表`，确认 `ISDP_Setting` 被按当前标准布局写出
-8. 最后做 Excel 联调和手工回归
+8. 额外验证未登录场景下，项目下拉框、`初始化当前表`、`部分下载`、`部分上传` 都能弹出 `当前未登录，请先登录`
+9. 最后做 Excel 联调和手工回归
 
 当前注册位置：
 
@@ -452,7 +482,8 @@ Ribbon 点击链路：
 至少确认：
 
 - 选择项目后不会自动初始化；只有显式点击 `初始化当前表` 才会写入或刷新 `SheetFieldMappings`
-- 未登录时项目下拉框显示 `请先登录`，登录成功后能够自动重载项目列表
+- 未登录时项目下拉框显示 `请先登录`，并弹出 `当前未登录，请先登录`；点击 `点我登录` 并登录成功后能够自动重载项目列表
+- 未登录时执行 `初始化当前表`、`部分下载`、`部分上传`，都会弹出 `当前未登录，请先登录`
 - 项目接口返回空列表时，下拉框显示 `无可用项目`
 - 显式初始化不会破坏业务单元格
 - `ISDP_Setting` 会以单 sheet、上下三个 section 的可读布局写出

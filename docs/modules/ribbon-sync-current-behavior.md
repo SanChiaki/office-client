@@ -1,6 +1,6 @@
 # Ribbon Sync Current Behavior
 
-日期：2026-04-22
+日期：2026-04-23
 
 状态：已实现并可联调。当前只注册了 `current-business-system`，但内部已经落地 `ISystemConnectorRegistry + systemKey` 路由，可继续扩展到多个业务系统。
 
@@ -473,6 +473,13 @@ grouped single 当前支持的运行场景：
 - Ribbon 启动时，`RibbonSyncController` 通过 `WorksheetSyncService -> SystemConnectorRegistry -> ISystemConnector.GetProjects()` 获取项目列表
 - 运行期绑定信息仍然写入 `SheetBindings.SystemKey + ProjectId`
 - 后续下载 / 上传始终以 `SheetBindings.SystemKey` 找回对应连接器
+
+连接器认证失败合同：
+
+- Ribbon 不会直接根据底层 HTTP 状态码判断“未登录”；项目下拉框和同步动作都只认 `AuthenticationRequiredException`
+- `SystemConnectorRegistry` 只聚合连接器项目列表并透传异常，不会把普通异常翻译成“未登录”
+- 因此任意 `ISystemConnector` 的 `GetProjects()`、`BuildFieldMappingSeed()`、`Find()`、`BatchSave()` 在遇到登录失效或无权限场景时，都应把至少 `401/403` 统一转换成 `AuthenticationRequiredException("当前未登录，请先登录")`
+- 如果连接器改为抛普通 `InvalidOperationException`、`HttpRequestException` 或其他异常，项目列表会显示 `项目加载失败`，同步动作也会显示普通错误，不会弹出 `点我登录`
 
 当前 mock 文档：
 
