@@ -1123,38 +1123,13 @@ namespace OfficeAgent.ExcelAddIn.Tests
             SheetBinding binding,
             IReadOnlyList<SheetFieldMappingRow> mappings)
         {
+            var metadataStore = CreateRealMetadataStore(adapter);
             adapter.SwitchWorkbook(workbookScopeKey);
-            adapter.SeedTable("SheetBindings", new[]
-            {
-                new[]
-                {
-                    binding.SheetName ?? string.Empty,
-                    binding.SystemKey ?? string.Empty,
-                    binding.ProjectId ?? string.Empty,
-                    binding.ProjectName ?? string.Empty,
-                    binding.HeaderStartRow.ToString(),
-                    binding.HeaderRowCount.ToString(),
-                    binding.DataStartRow.ToString(),
-                },
-            });
-            adapter.SeedTable(
-                "SheetFieldMappings",
-                (mappings ?? Array.Empty<SheetFieldMappingRow>())
-                    .Select(row => new[]
-                    {
-                        row?.SheetName ?? string.Empty,
-                        row?.Values != null && row.Values.TryGetValue("HeaderId", out var headerId) ? headerId ?? string.Empty : string.Empty,
-                        row?.Values != null && row.Values.TryGetValue("HeaderType", out var headerType) ? headerType ?? string.Empty : string.Empty,
-                        row?.Values != null && row.Values.TryGetValue("ApiFieldKey", out var apiFieldKey) ? apiFieldKey ?? string.Empty : string.Empty,
-                        row?.Values != null && row.Values.TryGetValue("IsIdColumn", out var isIdColumn) ? isIdColumn ?? string.Empty : string.Empty,
-                        row?.Values != null && row.Values.TryGetValue("DefaultL1", out var defaultL1) ? defaultL1 ?? string.Empty : string.Empty,
-                        row?.Values != null && row.Values.TryGetValue("CurrentL1", out var currentL1) ? currentL1 ?? string.Empty : string.Empty,
-                        row?.Values != null && row.Values.TryGetValue("DefaultL2", out var defaultL2) ? defaultL2 ?? string.Empty : string.Empty,
-                        row?.Values != null && row.Values.TryGetValue("CurrentL2", out var currentL2) ? currentL2 ?? string.Empty : string.Empty,
-                        row?.Values != null && row.Values.TryGetValue("ActivityId", out var activityId) ? activityId ?? string.Empty : string.Empty,
-                        row?.Values != null && row.Values.TryGetValue("PropertyId", out var propertyId) ? propertyId ?? string.Empty : string.Empty,
-                    })
-                    .ToArray());
+            metadataStore.SaveBinding(binding);
+            metadataStore.SaveFieldMappings(
+                binding?.SheetName ?? string.Empty,
+                BuildDefinition(),
+                mappings ?? Array.Empty<SheetFieldMappingRow>());
         }
 
         private static void SeedRecognizedHeaders(FakeWorksheetGridAdapter grid, string sheetName, SheetBinding binding)
