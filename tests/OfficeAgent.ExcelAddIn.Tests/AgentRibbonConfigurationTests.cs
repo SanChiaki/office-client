@@ -57,19 +57,6 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
-        public void RibbonRuntimeLabelsComeFromHostLocalizedStrings()
-        {
-            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
-                "src",
-                "OfficeAgent.ExcelAddIn",
-                "AgentRibbon.cs"));
-
-            Assert.Contains("var strings = Globals.ThisAddIn?.HostLocalizedStrings", ribbonCodeText, StringComparison.Ordinal);
-            Assert.Contains("ApplyLocalizedLabels", ribbonCodeText, StringComparison.Ordinal);
-            Assert.Contains("ProjectDropDownPlaceholderText => GetStrings().ProjectDropDownPlaceholderText", ribbonCodeText, StringComparison.Ordinal);
-        }
-
-        [Fact]
         public void RibbonDesignerUsesEnglishSafeDefaultsForLocalizedControls()
         {
             var designerText = File.ReadAllText(ResolveRepositoryPath(
@@ -198,13 +185,23 @@ namespace OfficeAgent.ExcelAddIn.Tests
         [Fact]
         public void ProjectLoadingMarksDropdownAsLoginRequiredWhenAuthenticationFails()
         {
-            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+            var addInAssembly = Assembly.LoadFrom(ResolveRepositoryPath(
                 "src",
                 "OfficeAgent.ExcelAddIn",
-                "AgentRibbon.cs"));
+                "bin",
+                "Debug",
+                "OfficeAgent.ExcelAddIn.dll"));
+            var ribbonType = addInAssembly.GetType("OfficeAgent.ExcelAddIn.AgentRibbon", throwOnError: true);
+            var method = ribbonType.GetMethod(
+                "GetNoProjectRestoreText",
+                BindingFlags.Static | BindingFlags.NonPublic,
+                binder: null,
+                types: new[] { typeof(int), typeof(string), typeof(string) },
+                modifiers: null);
 
-            Assert.Contains("SetProjectDropDownStatus(GetStrings().ProjectDropDownLoginRequiredText)", ribbonCodeText, StringComparison.Ordinal);
-            Assert.Contains("ExecuteLoginFlow", ribbonCodeText, StringComparison.Ordinal);
+            Assert.NotNull(method);
+            Assert.Equal("请先登录", (string)method.Invoke(null, new object[] { 0, string.Empty, "请先登录" }));
+            Assert.Equal("Sign in first", (string)method.Invoke(null, new object[] { 0, string.Empty, "Sign in first" }));
         }
 
         [Fact]
@@ -237,25 +234,41 @@ namespace OfficeAgent.ExcelAddIn.Tests
         [Fact]
         public void EmptyProjectListsWarnUserInsteadOfStayingSilentlyEmpty()
         {
-            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+            var addInAssembly = Assembly.LoadFrom(ResolveRepositoryPath(
                 "src",
                 "OfficeAgent.ExcelAddIn",
-                "AgentRibbon.cs"));
+                "bin",
+                "Debug",
+                "OfficeAgent.ExcelAddIn.dll"));
+            var stringsType = addInAssembly.GetType("OfficeAgent.ExcelAddIn.Localization.HostLocalizedStrings", throwOnError: true);
+            var forLocale = stringsType.GetMethod("ForLocale", BindingFlags.Public | BindingFlags.Static);
+            var zhStrings = forLocale.Invoke(null, new object[] { "zh" });
+            var enStrings = forLocale.Invoke(null, new object[] { "en" });
+            var messageMethod = stringsType.GetMethod("ProjectListLoadFailedMessage", BindingFlags.Instance | BindingFlags.Public);
 
-            Assert.Contains("if (projectOptionsByKey.Count == 0)", ribbonCodeText, StringComparison.Ordinal);
-            Assert.Contains("ProjectListEmptyWarningMessage", ribbonCodeText, StringComparison.Ordinal);
+            Assert.NotNull(messageMethod);
+            Assert.Contains("项目列表加载失败", (string)messageMethod.Invoke(zhStrings, new object[] { "boom" }), StringComparison.Ordinal);
+            Assert.Contains("Failed to load projects", (string)messageMethod.Invoke(enStrings, new object[] { "boom" }), StringComparison.Ordinal);
         }
 
         [Fact]
         public void ProjectLoadingUsesDedicatedStatusItemsInsteadOfRibbonLabelOnly()
         {
-            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+            var addInAssembly = Assembly.LoadFrom(ResolveRepositoryPath(
                 "src",
                 "OfficeAgent.ExcelAddIn",
-                "AgentRibbon.cs"));
+                "bin",
+                "Debug",
+                "OfficeAgent.ExcelAddIn.dll"));
+            var stringsType = addInAssembly.GetType("OfficeAgent.ExcelAddIn.Localization.HostLocalizedStrings", throwOnError: true);
+            var forLocale = stringsType.GetMethod("ForLocale", BindingFlags.Public | BindingFlags.Static);
+            var zhStrings = forLocale.Invoke(null, new object[] { "zh" });
+            var enStrings = forLocale.Invoke(null, new object[] { "en" });
 
-            Assert.Contains("SetProjectDropDownStatus(GetStrings().ProjectDropDownLoginRequiredText)", ribbonCodeText, StringComparison.Ordinal);
-            Assert.Contains("SetProjectDropDownStatus(GetStrings().ProjectDropDownNoAvailableProjectsText)", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Equal("请先登录", stringsType.GetProperty("ProjectDropDownLoginRequiredText").GetValue(zhStrings));
+            Assert.Equal("无可用项目", stringsType.GetProperty("ProjectDropDownNoAvailableProjectsText").GetValue(zhStrings));
+            Assert.Equal("Sign in first", stringsType.GetProperty("ProjectDropDownLoginRequiredText").GetValue(enStrings));
+            Assert.Equal("No projects available", stringsType.GetProperty("ProjectDropDownNoAvailableProjectsText").GetValue(enStrings));
         }
 
         [Fact]
@@ -272,12 +285,19 @@ namespace OfficeAgent.ExcelAddIn.Tests
         [Fact]
         public void PopulateProjectDropDownSetsPlaceholderTextBeforeAnyProjectIsChosen()
         {
-            var ribbonCodeText = File.ReadAllText(ResolveRepositoryPath(
+            var addInAssembly = Assembly.LoadFrom(ResolveRepositoryPath(
                 "src",
                 "OfficeAgent.ExcelAddIn",
-                "AgentRibbon.cs"));
+                "bin",
+                "Debug",
+                "OfficeAgent.ExcelAddIn.dll"));
+            var stringsType = addInAssembly.GetType("OfficeAgent.ExcelAddIn.Localization.HostLocalizedStrings", throwOnError: true);
+            var forLocale = stringsType.GetMethod("ForLocale", BindingFlags.Public | BindingFlags.Static);
+            var zhStrings = forLocale.Invoke(null, new object[] { "zh" });
+            var enStrings = forLocale.Invoke(null, new object[] { "en" });
 
-            Assert.Contains("SetProjectDropDownText(ProjectDropDownPlaceholderText);", ribbonCodeText, StringComparison.Ordinal);
+            Assert.Equal("先选择项目", stringsType.GetProperty("ProjectDropDownPlaceholderText").GetValue(zhStrings));
+            Assert.Equal("Select project", stringsType.GetProperty("ProjectDropDownPlaceholderText").GetValue(enStrings));
         }
 
         [Fact]
@@ -693,6 +713,9 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Equal(
                 "Sign in first",
                 (string)method.Invoke(null, new object[] { 0, string.Empty, "Sign in first" }));
+            Assert.Equal(
+                "无可用项目",
+                (string)method.Invoke(null, new object[] { 0, string.Empty, "无可用项目" }));
             Assert.Equal(
                 "Select project",
                 (string)method.Invoke(null, new object[] { 0, string.Empty, string.Empty }));

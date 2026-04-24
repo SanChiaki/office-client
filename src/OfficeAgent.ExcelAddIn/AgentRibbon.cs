@@ -120,13 +120,11 @@ namespace OfficeAgent.ExcelAddIn
                 var noProjectRestoreText = GetNoProjectRestoreText(
                     projectOptionsByKey.Count,
                     syncController.ActiveProjectId,
-                    lastControllerOwnedProjectDropDownText,
-                    ProjectDropDownPlaceholderText,
-                    GetStickyNoProjectTexts());
+                    lastControllerOwnedProjectDropDownText);
                 if (noProjectRestoreText != null)
                 {
                     SetProjectDropDownText(noProjectRestoreText);
-                    if (IsStickyNoProjectText(noProjectRestoreText, GetStickyNoProjectTexts()))
+                    if (GetStrings().IsStickyProjectStatus(noProjectRestoreText))
                     {
                         OfficeAgentLog.Warn(
                             "ribbon",
@@ -549,9 +547,7 @@ namespace OfficeAgent.ExcelAddIn
             var noProjectRestoreText = GetNoProjectRestoreText(
                 projectOptionsByKey.Count,
                 syncController?.ActiveProjectId,
-                lastControllerOwnedProjectDropDownText,
-                ProjectDropDownPlaceholderText,
-                GetStickyNoProjectTexts());
+                lastControllerOwnedProjectDropDownText);
             if (noProjectRestoreText != null)
             {
                 isUpdatingProjectDropDown = true;
@@ -572,53 +568,14 @@ namespace OfficeAgent.ExcelAddIn
 
         private static string GetNoProjectRestoreText(int projectOptionCount, string activeProjectId, string lastControllerOwnedText)
         {
-            return GetNoProjectRestoreText(
-                projectOptionCount,
-                activeProjectId,
-                lastControllerOwnedText,
-                HostLocalizedStrings.ForLocale("en").ProjectDropDownPlaceholderText,
-                new[]
-                {
-                    HostLocalizedStrings.ForLocale("en").ProjectDropDownLoginRequiredText,
-                    HostLocalizedStrings.ForLocale("en").ProjectDropDownNoAvailableProjectsText,
-                    HostLocalizedStrings.ForLocale("en").ProjectDropDownLoadFailedText,
-                    HostLocalizedStrings.ForLocale("zh").ProjectDropDownLoginRequiredText,
-                    HostLocalizedStrings.ForLocale("zh").ProjectDropDownNoAvailableProjectsText,
-                    HostLocalizedStrings.ForLocale("zh").ProjectDropDownLoadFailedText,
-                });
-        }
-
-        private static string GetNoProjectRestoreText(
-            int projectOptionCount,
-            string activeProjectId,
-            string lastControllerOwnedText,
-            string placeholderText,
-            string[] stickyNoProjectTexts)
-        {
             if (projectOptionCount != 0 || !string.IsNullOrWhiteSpace(activeProjectId))
             {
                 return null;
             }
 
-            return IsStickyNoProjectText(lastControllerOwnedText, stickyNoProjectTexts)
+            return HostLocalizedStrings.IsKnownStickyProjectStatus(lastControllerOwnedText)
                 ? lastControllerOwnedText
-                : (string.IsNullOrWhiteSpace(placeholderText) ? HostLocalizedStrings.ForLocale("en").ProjectDropDownPlaceholderText : placeholderText);
-        }
-
-        private static bool IsStickyNoProjectText(string text, string[] stickyNoProjectTexts)
-        {
-            return Array.IndexOf(stickyNoProjectTexts ?? Array.Empty<string>(), text ?? string.Empty) >= 0;
-        }
-
-        private static string[] GetStickyNoProjectTexts()
-        {
-            var strings = GetStrings();
-            return new[]
-            {
-                strings.ProjectDropDownLoginRequiredText,
-                strings.ProjectDropDownNoAvailableProjectsText,
-                strings.ProjectDropDownLoadFailedText,
-            };
+                : HostLocalizedStrings.ForLocale("en").ProjectDropDownPlaceholderText;
         }
 
         private void FullDownloadButton_Click(object sender, RibbonControlEventArgs e)

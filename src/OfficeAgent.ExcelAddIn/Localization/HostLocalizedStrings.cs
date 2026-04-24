@@ -29,6 +29,13 @@ namespace OfficeAgent.ExcelAddIn.Localization
 
         public string ProjectDropDownLoadFailedText => Locale == "zh" ? "项目加载失败" : "Failed to load projects";
 
+        public bool IsStickyProjectStatus(string text)
+        {
+            return string.Equals(text, ProjectDropDownLoginRequiredText, StringComparison.Ordinal) ||
+                   string.Equals(text, ProjectDropDownNoAvailableProjectsText, StringComparison.Ordinal) ||
+                   string.Equals(text, ProjectDropDownLoadFailedText, StringComparison.Ordinal);
+        }
+
         public string RibbonInitializeSheetButtonLabel => Locale == "zh" ? "初始化当前表" : "Initialize sheet";
 
         public string RibbonTemplateGroupLabel => Locale == "zh" ? "模板" : "Template";
@@ -256,6 +263,12 @@ namespace OfficeAgent.ExcelAddIn.Localization
         public static HostLocalizedStrings ForLocale(string locale)
         {
             return new HostLocalizedStrings(locale);
+        }
+
+        public static bool IsKnownStickyProjectStatus(string text)
+        {
+            return ForLocale("zh").IsStickyProjectStatus(text) ||
+                   ForLocale("en").IsStickyProjectStatus(text);
         }
     }
 }
