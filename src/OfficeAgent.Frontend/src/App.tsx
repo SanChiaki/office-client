@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { nativeBridge } from './bridge/nativeBridge';
 import { ConfirmationCard } from './components/ConfirmationCard';
+import { getUiStrings, isUntitledSessionTitle, localizeSessionTitle } from './i18n/uiStrings';
 import type {
   AgentPlan,
   AgentRequestEnvelope,
@@ -12,10 +13,12 @@ import type {
   ExcelCommandPreview,
   ExcelCommandResult,
   ExcelTableData,
+  HostContext,
   LoginStatus,
   SelectionContext,
   SkillRequestEnvelope,
   SkillResult,
+  UiLocale,
   UploadPreview,
 } from './types/bridge';
 
@@ -26,6 +29,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   model: 'gpt-5-mini',
   ssoUrl: '',
   ssoLoginSuccessPath: '',
+  uiLanguageOverride: 'system',
 };
 
 type ThreadMessage = {
@@ -45,7 +49,9 @@ type PendingConfirmation = {
 };
 
 export function App() {
-  const [bridgeStatus, setBridgeStatus] = useState('正在连接宿主...');
+  const [uiLocale, setUiLocale] = useState<UiLocale>('en');
+  const strings = getUiStrings(uiLocale);
+  const [bridgeStatus, setBridgeStatus] = useState(strings.bridgeConnecting);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState('');
   const [isSessionsDrawerOpen, setIsSessionsDrawerOpen] = useState(false);
@@ -79,104 +85,131 @@ export function App() {
   const [loginError, setLoginError] = useState('');
 
   useEffect(() => {
+    document.documentElement.lang = uiLocale;
+  }, [uiLocale]);
+
+  useEffect(() => {
     let isActive = true;
+    let startupLocale: UiLocale = 'en';
 
-    nativeBridge
-      .ping()
-      .then((result) => {
+    const hostContextPromise = nativeBridge
+      .getHostContext()
+      .then((result: HostContext) => {
         if (!isActive) {
           return;
         }
 
-        setBridgeStatus(`已连接 ${result.host} (${result.version})`);
-      })
-      .catch((error: Error) => {
-        if (!isActive) {
-          return;
-        }
-
-        setBridgeStatus(`宿主不可用: ${error.message}`);
-      });
-
-    nativeBridge
-      .getSessions()
-      .then((result) => {
-        if (!isActive) {
-          return;
-        }
-
-        const allSessions = result.sessions;
-        const latestSession = allSessions[0];
-
-        // Check if the most recent session is a usable new chat (empty " untitled and no messages)
-        let reusableSession: ChatSession | undefined;
-        if (latestSession && latestSession.title === 'New chat' && latestSession.messages.length === 0) {
-          reusableSession = latestSession;
-        }
-
-        let newSessionId: string;
-        let displaySessions: ChatSession[];
-
-        if (reusableSession) {
-          // Reuse the latest "New chat" session, keep all sessions in sidebar for reusing
-          newSessionId = reusableSession.id;
-          displaySessions = allSessions;
-        } else {
-          // Create a brand new session
-          const id = createMessageId();
-          const now = new Date().toISOString();
-          const newSession: ChatSession = {
-            id,
-            title: 'New chat',
-            createdAtUtc: now,
-            updatedAtUtc: now,
-            messages: [],
-          };
-          newSessionId = id;
-          displaySessions = [newSession, ...allSessions];
-        }
-
-        setSessions(displaySessions);
-        setSessionThreads((current) => hydrateSessionThreads(current, displaySessions));
-        setActiveSessionId(newSessionId);
+        startupLocale = result.resolvedUiLocale;
+        setUiLocale(result.resolvedUiLocale);
       })
       .catch(() => {
         if (!isActive) {
           return;
         }
 
-        setSessions([]);
-        setActiveSessionId('');
+        startupLocale = 'en';
+        setUiLocale('en');
       });
 
-    nativeBridge
+    void hostContextPromise.finally(() => {
+      nativeBridge
+        .ping()
+        .then((result) => {
+          if (!isActive) {
+            return;
+          }
+
+          setBridgeStatus(getUiStrings(startupLocale).bridgeConnected(result.host, result.version));
+        })
+        .catch((error: Error) => {
+          if (!isActive) {
+            return;
+          }
+
+          setBridgeStatus(getUiStrings(startupLocale).bridgeUnavailable(error.message));
+        });
+
+      nativeBridge
+        .getSessions()
+        .then((result) => {
+          if (!isActive) {
+            return;
+          }
+
+          const allSessions = result.sessions;
+          const latestSession = allSessions[0];
+
+          // Check if the most recent session is a usable new chat (empty " untitled and no messages)
+          let reusableSession: ChatSession | undefined;
+          if (latestSession && isUntitledSessionTitle(latestSession.title) && latestSession.messages.length === 0) {
+            reusableSession = latestSession;
+          }
+
+          let newSessionId: string;
+          let displaySessions: ChatSession[];
+
+          if (reusableSession) {
+            // Reuse the latest "New chat" session, keep all sessions in sidebar for reusing
+            newSessionId = reusableSession.id;
+            displaySessions = allSessions;
+          } else {
+            // Create a brand new session
+            const id = createMessageId();
+            const now = new Date().toISOString();
+            const newSession: ChatSession = {
+              id,
+              title: getUiStrings(startupLocale).untitledSessionTitle,
+              createdAtUtc: now,
+              updatedAtUtc: now,
+              messages: [],
+            };
+            newSessionId = id;
+            displaySessions = [newSession, ...allSessions];
+          }
+
+          setSessions(displaySessions);
+          setSessionThreads((current) => hydrateSessionThreads(current, displaySessions, startupLocale));
+          setActiveSessionId(newSessionId);
+        })
+        .catch(() => {
+          if (!isActive) {
+            return;
+          }
+
+          setSessions([]);
+          setActiveSessionId('');
+        });
+
+      nativeBridge
       .getSettings()
       .then((result) => {
         if (!isActive) {
           return;
         }
 
-        setSettings(result);
+        const normalizedSettings = normalizeSettings(result);
+        setSettings(normalizedSettings);
         if (!(isSettingsOpenRef.current && isSettingsDirtyRef.current)) {
-          setDraftSettings(result);
+          setDraftSettings(normalizedSettings);
         }
         setIsSettingsLoading(false);
         setSettingsLoadError('');
-        setSettingsSaveError('');
-      })
-      .catch(() => {
-        if (!isActive) {
-          return;
-        }
+          setSettingsSaveError('');
+        })
+        .catch(() => {
+          if (!isActive) {
+            return;
+          }
 
-        setSettings(null);
-        if (!(isSettingsOpenRef.current && isSettingsDirtyRef.current)) {
-          setDraftSettings(DEFAULT_SETTINGS);
-        }
-        setIsSettingsLoading(false);
-        setSettingsLoadError('无法从宿主加载设置。');
-        setSettingsSaveError('');
-      });
+          setSettings(null);
+          if (!(isSettingsOpenRef.current && isSettingsDirtyRef.current)) {
+            setDraftSettings(DEFAULT_SETTINGS);
+          }
+          setIsSettingsLoading(false);
+          setSettingsLoadError(getUiStrings(startupLocale).settingsLoadFailed);
+          setSettingsSaveError('');
+        });
+    });
 
     nativeBridge
       .getSelectionContext()
@@ -228,8 +261,8 @@ export function App() {
 
   const activeSession = sessions.find((session) => session.id === activeSessionId) ?? sessions[0];
   const activeThreadMessages = activeSession
-    ? sessionThreads[activeSession.id] ?? createInitialThreadMessages(activeSession)
-    : createInitialThreadMessages();
+    ? sessionThreads[activeSession.id] ?? createInitialThreadMessages(activeSession, uiLocale)
+    : createInitialThreadMessages(undefined, uiLocale);
   const activePendingConfirmation = activeSession ? pendingConfirmations[activeSession.id] ?? null : null;
   const isCommandPending = activeSession ? pendingCommandSessions[activeSession.id] === true : false;
   const isComposerDisabled = isCommandPending || activePendingConfirmation !== null;
@@ -283,10 +316,10 @@ export function App() {
       if (result.success) {
         setLoginStatus({ isLoggedIn: true, ssoUrl: draftSettings.ssoUrl.trim() });
       } else {
-        setLoginError(result.error ?? '登录失败。');
+        setLoginError(result.error ?? strings.loginFailed);
       }
     } catch (error) {
-      setLoginError(error instanceof Error ? error.message : '登录失败。');
+      setLoginError(error instanceof Error ? error.message : strings.loginFailed);
     } finally {
       setIsLoggingIn(false);
     }
@@ -346,7 +379,7 @@ export function App() {
     const now = new Date().toISOString();
     const newSession: ChatSession = {
       id,
-      title: 'New chat',
+      title: strings.untitledSessionTitle,
       createdAtUtc: now,
       updatedAtUtc: now,
       messages: [],
@@ -354,7 +387,7 @@ export function App() {
     setSessions((current) => [newSession, ...current]);
     setSessionThreads((current) => ({
       ...current,
-      [id]: createInitialThreadMessages(),
+      [id]: createInitialThreadMessages(undefined, uiLocale),
     }));
     setActiveSessionId(id);
     setIsSessionsDrawerOpen(false);
@@ -458,7 +491,7 @@ export function App() {
     setSettingsSaveError('');
 
     try {
-      const savedSettings = await nativeBridge.saveSettings(draftSettings);
+      const savedSettings = normalizeSettings(await nativeBridge.saveSettings(draftSettings));
       setSettings(savedSettings);
       setDraftSettings(savedSettings);
       isSettingsDirtyRef.current = false;
@@ -466,7 +499,7 @@ export function App() {
       shouldRestoreSettingsButtonFocusRef.current = true;
       setIsSettingsOpen(false);
     } catch (error) {
-      setSettingsSaveError(error instanceof Error ? error.message : '保存设置失败。');
+      setSettingsSaveError(error instanceof Error ? error.message : strings.settingsSaveFailed);
     } finally {
       setIsSettingsSaving(false);
     }
@@ -550,7 +583,7 @@ export function App() {
 
   // Auto-rename session when first user message arrives
   useEffect(() => {
-    if (!activeSession || activeSession.title !== 'New chat') {
+    if (!activeSession || !isUntitledSessionTitle(activeSession.title)) {
       return;
     }
 
@@ -611,10 +644,10 @@ export function App() {
       id: createMessageId(),
       role: 'system',
       content: activePendingConfirmation.kind === 'skill'
-        ? '已取消待处理的上传操作。'
+        ? strings.cancellationSkill
         : activePendingConfirmation.kind === 'agent'
-          ? '已取消待执行的计划。'
-          : '已取消待处理的 Excel 操作。',
+          ? strings.cancellationPlan
+          : strings.cancellationExcel,
     });
   }
 
@@ -647,7 +680,7 @@ export function App() {
       appendThreadMessage(sessionId, {
         id: createMessageId(),
         role: 'assistant',
-        content: `请求失败：${error instanceof Error ? error.message : 'Excel 命令执行失败。'}`,
+        content: strings.requestFailed(error instanceof Error ? error.message : strings.excelRequestFallback),
       });
     } finally {
       setCommandPending(sessionId, false);
@@ -680,7 +713,7 @@ export function App() {
       appendThreadMessage(sessionId, {
         id: createMessageId(),
         role: 'assistant',
-        content: `请求失败：${error instanceof Error ? error.message : 'Skill 执行失败。'}`,
+        content: strings.requestFailed(error instanceof Error ? error.message : strings.skillRequestFallback),
       });
     } finally {
       setCommandPending(sessionId, false);
@@ -707,7 +740,7 @@ export function App() {
             sessionId,
           },
           plan: result.planner.plan,
-          preview: createPlanPreview(result),
+          preview: createPlanPreview(result, uiLocale),
         });
         appendThreadMessage(sessionId, {
           id: createMessageId(),
@@ -723,7 +756,7 @@ export function App() {
       appendThreadMessage(sessionId, {
         id: createMessageId(),
         role: 'assistant',
-        content: `请求失败：${error instanceof Error ? error.message : 'Agent 执行失败。'}`,
+        content: strings.requestFailed(error instanceof Error ? error.message : strings.agentRequestFallback),
       });
     } finally {
       setCommandPending(sessionId, false);
@@ -733,7 +766,7 @@ export function App() {
   function appendThreadMessage(sessionId: string, message: ThreadMessage) {
     setSessionThreads((current) => ({
       ...current,
-      [sessionId]: [...(current[sessionId] ?? createInitialThreadMessages(findSessionById(sessions, sessionId))), message],
+      [sessionId]: [...(current[sessionId] ?? createInitialThreadMessages(findSessionById(sessions, sessionId), uiLocale)), message],
     }));
   }
 
@@ -745,7 +778,7 @@ export function App() {
     setSessionThreads((current) => ({
       ...current,
       [sessionId]: [
-        ...(current[sessionId] ?? createInitialThreadMessages(findSessionById(sessions, sessionId))),
+        ...(current[sessionId] ?? createInitialThreadMessages(findSessionById(sessions, sessionId), uiLocale)),
         ...messages,
       ],
     }));
@@ -790,25 +823,25 @@ export function App() {
   return (
     <div className="app-shell">
       <main className="workspace">
-        <header className="chat-header" aria-label="Chat header">
+        <header className="chat-header" aria-label={strings.chatHeaderLabel}>
           <div className="chat-header__leading">
             <button
               type="button"
               className="icon-button icon-button--ghost"
-              aria-label={isSessionsDrawerOpen ? '关闭会话列表' : '打开会话列表'}
+              aria-label={isSessionsDrawerOpen ? strings.closeSessionsDrawer : strings.openSessionsDrawer}
               ref={sessionsButtonRef}
               onClick={toggleSessionsDrawer}
             >
               <MenuIcon />
             </button>
 
-            <h1 className="title">{activeSession?.title ?? 'ISDP AI'}</h1>
+            <h1 className="title">{activeSession ? localizeSessionTitle(activeSession.title, strings) : strings.appHeadingFallback}</h1>
           </div>
 
           <button
             type="button"
             className="icon-button icon-button--ghost"
-            aria-label="打开设置"
+            aria-label={strings.openSettings}
             ref={settingsButtonRef}
             onClick={openSettings}
           >
@@ -816,7 +849,7 @@ export function App() {
           </button>
         </header>
 
-        <section ref={threadRef} className="thread" aria-label="Message thread">
+        <section ref={threadRef} className="thread" aria-label={strings.messageThreadLabel}>
           {activeThreadMessages.map((message) => (
             <article key={message.id} className={`message message--${message.role}`}>
               <p>{message.content}</p>
@@ -833,7 +866,7 @@ export function App() {
           {isCommandPending ? (
             <article className="message message--loading">
               <div className="loading-spinner" />
-              <p>{'\u6B63\u5728\u601D\u8003\u2026'}</p>
+              <p>{strings.loadingThinking}</p>
             </article>
           ) : null}
         </section>
@@ -843,15 +876,20 @@ export function App() {
             <ConfirmationCard
               preview={activePendingConfirmation.preview}
               isBusy={isCommandPending}
+              ariaLabel={strings.confirmCardLabel}
+              eyebrow={strings.confirmCardEyebrow}
+              title={strings.confirmCardTitle}
+              cancelLabel={strings.cancel}
+              confirmLabel={strings.confirm}
               onConfirm={handlePendingConfirmationConfirm}
               onCancel={handlePendingConfirmationCancel}
             />
           ) : null}
 
-          <footer className="composer" aria-label="Message composer">
+          <footer className="composer" aria-label={strings.messageComposerLabel}>
             <textarea
-              aria-label="Message composer"
-              placeholder="输入消息..."
+              aria-label={strings.messageComposerLabel}
+              placeholder={strings.messagePlaceholder}
               rows={3}
               value={composerValue}
               disabled={isComposerDisabled}
@@ -860,12 +898,12 @@ export function App() {
             />
             <div className="composer__divider" />
             <div className="composer__actions">
-              <section className="selection-pill" aria-label="Selection capsule" role="status">
-                {formatSelectionCapsule(selectionContext)}
+              <section className="selection-pill" aria-label={strings.selectionCapsuleLabel} role="status">
+                {formatSelectionCapsule(selectionContext, uiLocale)}
               </section>
 
               <button type="button" className="send-button" disabled={isComposerDisabled} onClick={handleComposerSend}>
-                发送
+                {strings.send}
               </button>
             </div>
           </footer>
@@ -876,30 +914,30 @@ export function App() {
         <div className="drawer-backdrop" onClick={closeSessionsDrawer}>
           <aside
             className="session-drawer"
-            aria-label="Sessions drawer"
+            aria-label={strings.sessionsDrawerLabel}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="session-drawer__header">
               <button
                 type="button"
                 className="icon-button icon-button--ghost"
-                aria-label="关闭会话列表"
+                aria-label={strings.closeSessionsDrawer}
                 onClick={closeSessionsDrawer}
               >
                 <MenuIcon />
               </button>
-              <div className="sidebar__title">会话</div>
+              <div className="sidebar__title">{strings.sessionsTitle}</div>
               <button
                 type="button"
                 className="session-drawer__new-chat"
-                aria-label="新建会话"
+                aria-label={strings.newSession}
                 onClick={handleCreateNewSession}
               >
                 <NewChatIcon />
               </button>
             </div>
             {sessions.length === 0 ? (
-              <div className="sidebar__empty">暂无会话</div>
+              <div className="sidebar__empty">{strings.noSessions}</div>
             ) : (
               <div className="sidebar__list">
                 {sessions.map((session) => (
@@ -914,10 +952,10 @@ export function App() {
                         autoFocus
                       />
                       <div className="session-chip__edit-actions">
-                        <button type="button" className="session-chip__action-btn" aria-label="确认重命名" onClick={handleRenameConfirm}>
+                        <button type="button" className="session-chip__action-btn" aria-label={strings.confirmRename} onClick={handleRenameConfirm}>
                           <CheckIcon />
                         </button>
-                        <button type="button" className="session-chip__action-btn" aria-label="取消重命名" onClick={handleRenameCancel}>
+                        <button type="button" className="session-chip__action-btn" aria-label={strings.cancelRename} onClick={handleRenameCancel}>
                           <CloseIcon />
                         </button>
                       </div>
@@ -931,12 +969,12 @@ export function App() {
                       tabIndex={0}
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSessionSelect(session.id); } }}
                     >
-                      <span className="session-chip__title">{session.title}</span>
+                      <span className="session-chip__title">{localizeSessionTitle(session.title, strings)}</span>
                       <div className="session-chip__actions">
-                        <button type="button" className="session-chip__action-btn" aria-label="重命名会话" onClick={(e) => { e.stopPropagation(); handleRenameStart(session.id, session.title); }}>
+                        <button type="button" className="session-chip__action-btn" aria-label={strings.renameSession} onClick={(e) => { e.stopPropagation(); handleRenameStart(session.id, localizeSessionTitle(session.title, strings)); }}>
                           <PencilIcon />
                         </button>
-                        <button type="button" className="session-chip__action-btn" aria-label="删除会话" onClick={(e) => { e.stopPropagation(); setDeleteConfirmSessionId(session.id); }}>
+                        <button type="button" className="session-chip__action-btn" aria-label={strings.deleteSession} onClick={(e) => { e.stopPropagation(); setDeleteConfirmSessionId(session.id); }}>
                           <TrashIcon />
                         </button>
                       </div>
@@ -956,18 +994,18 @@ export function App() {
             className="settings-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="设置对话框"
+            aria-label={strings.settingsDialogLabel}
             onKeyDown={handleSettingsDialogKeyDown}
           >
             <div className="settings-dialog__header">
               <div>
-                <div className="eyebrow">配置</div>
-                <h2 className="settings-dialog__title">设置</h2>
+                <div className="eyebrow">{strings.settingsEyebrow}</div>
+                <h2 className="settings-dialog__title">{strings.settingsTitle}</h2>
               </div>
               <button
                 type="button"
                 className="icon-button icon-button--ghost"
-                aria-label="关闭"
+                aria-label={strings.close}
                 onClick={closeSettings}
                 disabled={isSettingsSaving}
               >
@@ -992,7 +1030,7 @@ export function App() {
                 <button
                   type="button"
                   className="icon-button--ghost settings-field__toggle"
-                  aria-label={showApiKey ? '隐藏 API Key' : '显示 API Key'}
+                  aria-label={showApiKey ? strings.hideApiKey : strings.showApiKey}
                   onClick={() => setShowApiKey((v) => !v)}
                   disabled={isSettingsSaving}
                 >
@@ -1046,9 +1084,9 @@ export function App() {
             </label>
 
             <label className="settings-field">
-              <span>登录成功路径</span>
+              <span>{strings.loginSuccessPath}</span>
               <input
-                aria-label="登录成功路径"
+                aria-label={strings.loginSuccessPath}
                 type="text"
                 value={draftSettings.ssoLoginSuccessPath}
                 disabled={isSettingsSaving || isLoggingIn}
@@ -1059,21 +1097,21 @@ export function App() {
             <div className="login-status">
               {loginStatus?.isLoggedIn ? (
                 <>
-                  <span className="login-badge login-badge--active">已登录</span>
+                  <span className="login-badge login-badge--active">{strings.loggedIn}</span>
                   <button type="button" className="ghost-button" onClick={handleLogout} disabled={isSettingsSaving}>
-                    登出
+                    {strings.logout}
                   </button>
                 </>
               ) : (
                 <>
-                  <span className="login-badge">未登录</span>
+                  <span className="login-badge">{strings.loggedOut}</span>
                   <button
                     type="button"
                     className="ghost-button"
                     onClick={handleLogin}
                     disabled={isSettingsSaving || isLoggingIn || !draftSettings.ssoUrl.trim()}
                   >
-                    {isLoggingIn ? '登录中...' : '登录'}
+                    {isLoggingIn ? strings.loginInProgress : strings.login}
                   </button>
                 </>
               )}
@@ -1083,7 +1121,7 @@ export function App() {
 
             <div className="settings-actions">
               <button type="button" className="ghost-button" onClick={closeSettings} disabled={isSettingsSaving}>
-                取消
+                {strings.cancel}
               </button>
               <button
                 type="button"
@@ -1091,7 +1129,7 @@ export function App() {
                 onClick={handleSettingsSave}
                 disabled={isSettingsLoading || isSettingsSaving || Boolean(settingsLoadError)}
               >
-                保存
+                {strings.save}
               </button>
             </div>
             <div className="settings-version">{bridgeStatus}</div>
@@ -1102,13 +1140,13 @@ export function App() {
       {deleteConfirmSessionId ? (
         <div className="delete-dialog-backdrop">
           <div className="delete-dialog">
-            <h2 className="delete-dialog__title">删除会话</h2>
+            <h2 className="delete-dialog__title">{strings.deleteSessionDialogTitle}</h2>
             <p className="delete-dialog__message">
-              确定要删除「{sessions.find((s) => s.id === deleteConfirmSessionId)?.title}」吗？此操作不可撤销。
+              {strings.deleteSessionPrompt(localizeSessionTitle(sessions.find((s) => s.id === deleteConfirmSessionId)?.title ?? '', strings))}
             </p>
             <div className="delete-dialog__actions">
-              <button type="button" className="ghost-button" onClick={() => setDeleteConfirmSessionId(null)}>取消</button>
-              <button type="button" className="send-button" onClick={handleDeleteConfirm}>删除</button>
+              <button type="button" className="ghost-button" onClick={() => setDeleteConfirmSessionId(null)}>{strings.cancel}</button>
+              <button type="button" className="send-button" onClick={handleDeleteConfirm}>{strings.deleteSession}</button>
             </div>
           </div>
         </div>
@@ -1139,7 +1177,7 @@ function threadToChatMessages(messages: ThreadMessage[]): Array<{ id: string; ro
     }));
 }
 
-function createInitialThreadMessages(session?: ChatSession): ThreadMessage[] {
+function createInitialThreadMessages(session: ChatSession | undefined, locale: UiLocale): ThreadMessage[] {
   const persistedMessages = session?.messages ?? [];
   if (persistedMessages.length > 0) {
     return persistedMessages.map((message) => ({
@@ -1153,7 +1191,7 @@ function createInitialThreadMessages(session?: ChatSession): ThreadMessage[] {
     {
       id: 'welcome-message',
       role: 'assistant',
-      content: '欢迎使用ISDP，我是能和Excel交互的Agent。你选中的单元格会被我优先识别，尽情尝试吧~',
+      content: getUiStrings(locale).welcomeMessage,
     },
   ];
 }
@@ -1161,11 +1199,12 @@ function createInitialThreadMessages(session?: ChatSession): ThreadMessage[] {
 function hydrateSessionThreads(
   currentThreads: Record<string, ThreadMessage[]>,
   sessions: ChatSession[],
+  locale: UiLocale,
 ): Record<string, ThreadMessage[]> {
   const nextThreads: Record<string, ThreadMessage[]> = {};
 
   sessions.forEach((session) => {
-    nextThreads[session.id] = currentThreads[session.id] ?? createInitialThreadMessages(session);
+    nextThreads[session.id] = currentThreads[session.id] ?? createInitialThreadMessages(session, locale);
   });
 
   return nextThreads;
@@ -1215,12 +1254,13 @@ function createAgentResultMessages(result: AgentResult): ThreadMessage[] {
   return messages;
 }
 
-function createPlanPreview(result: AgentResult): ExcelCommandPreview {
+function createPlanPreview(result: AgentResult, locale: UiLocale): ExcelCommandPreview {
+  const strings = getUiStrings(locale);
   const plan = result.planner?.plan;
   return {
-    title: '执行计划',
+    title: strings.planPreviewTitle,
     summary: plan?.summary ?? result.message,
-    details: plan?.steps.map(formatPlanStep) ?? [],
+    details: plan?.steps.map((step) => formatPlanStep(step, locale)) ?? [],
   };
 }
 
@@ -1237,18 +1277,19 @@ function createTableFromUploadPreview(preview?: UploadPreview): ExcelTableData |
   };
 }
 
-function formatPlanStep(step: AgentPlan['steps'][number]) {
+function formatPlanStep(step: AgentPlan['steps'][number], locale: UiLocale) {
+  const strings = getUiStrings(locale);
   switch (step.type) {
     case 'excel.addWorksheet':
-      return `新增工作表 ${String(step.args?.newSheetName ?? '').trim()}`.trim();
+      return strings.formatPlanStepAddWorksheet(String(step.args?.newSheetName ?? '').trim());
     case 'excel.writeRange':
-      return `写入范围 ${String(step.args?.targetAddress ?? '').trim()}`.trim();
+      return strings.formatPlanStepWriteRange(String(step.args?.targetAddress ?? '').trim());
     case 'excel.renameWorksheet':
-      return `重命名工作表 ${String(step.args?.sheetName ?? '').trim()} 为 ${String(step.args?.newSheetName ?? '').trim()}`.trim();
+      return strings.formatPlanStepRenameWorksheet(String(step.args?.sheetName ?? '').trim(), String(step.args?.newSheetName ?? '').trim());
     case 'excel.deleteWorksheet':
-      return `删除工作表 ${String(step.args?.sheetName ?? '').trim()}`.trim();
+      return strings.formatPlanStepDeleteWorksheet(String(step.args?.sheetName ?? '').trim());
     case 'skill.upload_data':
-      return '上传所选数据';
+      return strings.formatPlanStepUploadData;
     default:
       return step.type;
   }
@@ -1328,9 +1369,17 @@ function createMessageId() {
   return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function formatSelectionCapsule(selectionContext: SelectionContext | null) {
+function normalizeSettings(settings: Partial<AppSettings> | null | undefined): AppSettings {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...settings,
+    uiLanguageOverride: settings?.uiLanguageOverride ?? DEFAULT_SETTINGS.uiLanguageOverride,
+  };
+}
+
+function formatSelectionCapsule(selectionContext: SelectionContext | null, locale: UiLocale) {
   if (!selectionContext?.hasSelection || !selectionContext.sheetName || !selectionContext.address) {
-    return '未选中';
+    return getUiStrings(locale).noSelection;
   }
 
   return `${selectionContext.sheetName} · ${selectionContext.address}`;

@@ -8,6 +8,7 @@ import type { SelectionContext } from './types/bridge';
 vi.mock('./bridge/nativeBridge', () => ({
   nativeBridge: {
     ping: vi.fn(),
+    getHostContext: vi.fn(),
     getSelectionContext: vi.fn(),
     getSessions: vi.fn(),
     onSelectionContextChanged: vi.fn(),
@@ -50,6 +51,10 @@ beforeEach(() => {
     host: 'browser-preview',
     version: 'dev',
   });
+  mockedBridge.getHostContext.mockResolvedValue({
+    resolvedUiLocale: 'zh',
+    uiLanguageOverride: 'system',
+  });
   mockedBridge.getSelectionContext.mockResolvedValue({
     hasSelection: true,
     workbookName: 'Quarterly Report.xlsx',
@@ -91,6 +96,7 @@ beforeEach(() => {
     model: 'gpt-5-mini',
     ssoUrl: '',
     ssoLoginSuccessPath: '',
+    uiLanguageOverride: 'system',
   });
   mockedBridge.getLoginStatus.mockResolvedValue({
     isLoggedIn: false,
@@ -149,32 +155,42 @@ afterEach(() => {
 });
 
 describe('App shell', () => {
+  it('loads host context and keeps the Chinese fixed UI path stable', async () => {
+    render(<App />);
+
+    expect(mockedBridge.getHostContext).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/欢迎使用\s*ISDP/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /打开设置/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /发送/i })).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe('zh');
+  });
+
   it('renders the expected task pane regions', async () => {
     const user = userEvent.setup();
 
     render(<App />);
 
-    expect(screen.getByRole('banner', { name: /chat header/i })).toBeInTheDocument();
+    expect(screen.getByRole('banner', { name: /聊天页眉|chat header/i })).toBeInTheDocument();
     expect(
-      screen.getByRole('region', { name: /message thread/i }),
+      screen.getByRole('region', { name: /消息线程|message thread/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/欢迎使用\s*ISDP/),
+      screen.getByText(/欢迎使用\s*ISDP|welcome to isdp/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('status', { name: /selection capsule/i }),
+      screen.getByRole('status', { name: /选区胶囊|selection capsule/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('textbox', { name: /message composer/i }),
+      screen.getByRole('textbox', { name: /消息输入框|message composer/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /打开会话列表/i }),
+      screen.getByRole('button', { name: /打开会话列表|open sessions drawer/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /打开设置/i }),
+      screen.getByRole('button', { name: /打开设置|open settings/i }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByText(/new chat/i, { selector: 'h1' }),
+      await screen.findByText(/未命名会话|untitled/i, { selector: 'h1' }),
     ).toBeInTheDocument();
     expect(
       await screen.findByText(/sheet1 · a1:c4/i),
@@ -192,21 +208,21 @@ describe('App shell', () => {
       screen.queryByText(/project a · cn · 42/i),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('complementary', { name: /sessions drawer/i }),
+      screen.queryByRole('complementary', { name: /会话抽屉|sessions drawer/i }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /打开会话列表/i }));
+    await user.click(screen.getByRole('button', { name: /打开会话列表|open sessions drawer/i }));
 
     expect(
-      await screen.findByRole('complementary', { name: /sessions drawer/i }),
+      await screen.findByRole('complementary', { name: /会话抽屉|sessions drawer/i }),
     ).toBeInTheDocument();
     expect(
       await screen.findByRole('button', { name: /browser preview/i }),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /打开设置/i }));
+    await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
 
-    const settingsDialog = screen.getByRole('dialog', { name: /设置对话框/i });
+    const settingsDialog = screen.getByRole('dialog', { name: /设置对话框|settings dialog/i });
     expect(settingsDialog).toBeInTheDocument();
     expect(
       within(settingsDialog).getAllByLabelText(/^api key$/i)[0],
@@ -223,6 +239,29 @@ describe('App shell', () => {
     expect(
       within(settingsDialog).getByRole('textbox', { name: /model/i }),
     ).toHaveValue('gpt-5-mini');
+  });
+
+  it('renders English fixed UI when the host locale resolves to English', async () => {
+    const user = userEvent.setup();
+    mockedBridge.getHostContext.mockResolvedValueOnce({
+      resolvedUiLocale: 'en',
+      uiLanguageOverride: 'system',
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText(/welcome to isdp/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open settings/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /send/i })).toBeInTheDocument();
+    expect(await screen.findByText(/untitled/i, { selector: 'h1' })).toBeInTheDocument();
+    expect(await screen.findByText(/^sheet1 · a1:c4$/i)).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe('en');
+
+    await user.click(screen.getByRole('button', { name: /open settings/i }));
+
+    expect(screen.getByRole('dialog', { name: /settings dialog/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument();
   });
 
   it('uses ISDP AI as the fallback panel title before sessions load', async () => {
@@ -261,10 +300,10 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /打开设置/i }));
+    await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
     await user.clear(screen.getByRole('textbox', { name: /^business base url$/i }));
     await user.type(screen.getByRole('textbox', { name: /^business base url$/i }), 'http://localhost:3200');
-    await user.click(screen.getByRole('button', { name: /保存/i }));
+    await user.click(screen.getByRole('button', { name: /保存|save/i }));
 
     expect(mockedBridge.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
       baseUrl: 'https://api.example.com',
@@ -276,11 +315,11 @@ describe('App shell', () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await user.click(await screen.findByRole('button', { name: /打开会话列表/i }));
-    const sidebar = await screen.findByRole('complementary', { name: /sessions drawer/i });
+    await user.click(await screen.findByRole('button', { name: /打开会话列表|open sessions drawer/i }));
+    const sidebar = await screen.findByRole('complementary', { name: /会话抽屉|sessions drawer/i });
 
     expect(
-      await screen.findByRole('heading', { name: /new chat/i }),
+      await screen.findByRole('heading', { name: /未命名会话|untitled/i }),
     ).toBeInTheDocument();
 
     await user.click(within(sidebar).getByRole('button', { name: /review notes/i }));
@@ -295,21 +334,21 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /打开设置/i }));
+    await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
     await user.clear(screen.getByRole('textbox', { name: /^base url$/i }));
     await user.type(screen.getByRole('textbox', { name: /^base url$/i }), 'https://changed.example.com');
-    await user.click(screen.getByRole('button', { name: /取消/i }));
+    await user.click(screen.getByRole('button', { name: /取消|cancel/i }));
 
-    await user.click(screen.getByRole('button', { name: /打开设置/i }));
+    await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
     expect(
       screen.getByRole('textbox', { name: /^base url$/i }),
     ).toHaveValue('https://api.example.com');
 
     await user.clear(screen.getByRole('textbox', { name: /^base url$/i }));
     await user.type(screen.getByRole('textbox', { name: /^base url$/i }), 'https://closed.example.com');
-    await user.click(screen.getByRole('button', { name: /关闭/i }));
+    await user.click(screen.getByRole('button', { name: /关闭|close/i }));
 
-    await user.click(screen.getByRole('button', { name: /打开设置/i }));
+    await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
     expect(
       screen.getByRole('textbox', { name: /^base url$/i }),
     ).toHaveValue('https://api.example.com');
@@ -321,15 +360,15 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /打开设置/i }));
-    await user.click(screen.getByRole('button', { name: /保存/i }));
+    await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
+    await user.click(screen.getByRole('button', { name: /保存|save/i }));
 
     expect(
       await screen.findByRole('alert'),
     ).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent(/bridge write failed/i);
     expect(
-      screen.getByRole('dialog', { name: /设置对话框/i }),
+      screen.getByRole('dialog', { name: /设置对话框|settings dialog/i }),
     ).toBeInTheDocument();
   });
 
@@ -347,7 +386,7 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /打开设置/i }));
+    await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
     const baseUrlInput = screen.getByRole('textbox', { name: /^base url$/i });
     await user.clear(baseUrlInput);
     await user.type(baseUrlInput, 'https://draft.example.com');
@@ -371,22 +410,22 @@ describe('App shell', () => {
 
     render(<App />);
 
-    const settingsButton = screen.getByRole('button', { name: /打开设置/i });
+    const settingsButton = screen.getByRole('button', { name: /打开设置|open settings/i });
     await user.click(settingsButton);
 
-    const dialog = screen.getByRole('dialog', { name: /设置对话框/i });
+    const dialog = screen.getByRole('dialog', { name: /设置对话框|settings dialog/i });
     const apiKeyInput = within(dialog).getAllByLabelText(/^api key$/i)[0];
 
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(apiKeyInput).toHaveFocus();
 
     await user.tab({ shift: true });
-    expect(screen.getByRole('button', { name: /关闭/i })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /关闭|close/i })).toHaveFocus();
 
     await user.tab({ shift: true });
-    expect(screen.getByRole('button', { name: /保存/i })).toHaveFocus();
+    expect(screen.getByRole('button', { name: /保存|save/i })).toHaveFocus();
 
-    await user.click(screen.getByRole('button', { name: /关闭/i }));
+    await user.click(screen.getByRole('button', { name: /关闭|close/i }));
     expect(settingsButton).toHaveFocus();
   });
 
@@ -404,8 +443,8 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /打开设置/i }));
-    expect(screen.getByRole('button', { name: /保存/i })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
+    expect(screen.getByRole('button', { name: /保存|save/i })).toBeDisabled();
 
     delayedSettings.resolve({
       apiKey: 'loaded-key',
@@ -419,7 +458,7 @@ describe('App shell', () => {
     expect(
       await screen.findByDisplayValue('loaded-key'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /保存/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /保存|save/i })).toBeEnabled();
   });
 
   it('keeps save disabled when settings fail to load', async () => {
@@ -428,9 +467,9 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /打开设置/i }));
+    await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
 
-    expect(screen.getByRole('button', { name: /保存/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /保存|save/i })).toBeDisabled();
     expect(await screen.findByRole('alert')).toHaveTextContent(/无法从宿主加载设置/i);
   });
 
@@ -448,16 +487,16 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /打开设置/i }));
-    await user.click(screen.getByRole('button', { name: /保存/i }));
+    await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
+    await user.click(screen.getByRole('button', { name: /保存|save/i }));
 
     expect(screen.getAllByLabelText(/^api key$/i)[0]).toBeDisabled();
     expect(screen.getByRole('textbox', { name: /^base url$/i })).toBeDisabled();
     expect(screen.getByRole('textbox', { name: /^business base url$/i })).toBeDisabled();
     expect(screen.getByRole('textbox', { name: /model/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /关闭/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /取消/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /保存/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /关闭|close/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /取消|cancel/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /保存|save/i })).toBeDisabled();
 
     pendingSave.resolve({
       apiKey: '',
@@ -469,7 +508,7 @@ describe('App shell', () => {
     });
 
     expect(
-      await screen.findByRole('button', { name: /打开设置/i }),
+      await screen.findByRole('button', { name: /打开设置|open settings/i }),
     ).toHaveFocus();
   });
 
@@ -517,7 +556,7 @@ describe('App shell', () => {
     render(<App />);
 
     expect(
-      await screen.findByText(/^未选中$/i),
+      await screen.findByText(/^未选中$|^no selection$/i),
     ).toBeInTheDocument();
   });
 
@@ -526,13 +565,13 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'read selection{enter}');
+    await user.type(screen.getByRole('textbox', { name: /消息输入框|message composer/i }), 'read selection{enter}');
 
     expect(mockedBridge.executeExcelCommand).toHaveBeenCalledWith({
       commandType: 'excel.readSelectionTable',
       confirmed: false,
     });
-    expect(screen.queryByText(/确认 Excel 操作/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/确认 Excel 操作|confirm excel action/i)).not.toBeInTheDocument();
     expect(
       await screen.findByText(/read selection from sheet1 a1:c4/i),
     ).toBeInTheDocument();
@@ -545,7 +584,7 @@ describe('App shell', () => {
 
     render(<App />);
 
-    const composer = screen.getByRole('textbox', { name: /message composer/i });
+    const composer = screen.getByRole('textbox', { name: /消息输入框|message composer/i });
     await user.type(composer, 'line 1');
     await user.keyboard('{Shift>}{Enter}{/Shift}');
     await user.type(composer, 'line 2');
@@ -567,8 +606,8 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'Create a summary sheet from the current selection');
-    await user.click(screen.getByRole('button', { name: /发送/i }));
+    await user.type(screen.getByRole('textbox', { name: /消息输入框|message composer/i }), 'Create a summary sheet from the current selection');
+    await user.click(screen.getByRole('button', { name: /发送|send/i }));
 
     expect(mockedBridge.runAgent).toHaveBeenCalledWith({
       userInput: 'Create a summary sheet from the current selection',
@@ -648,14 +687,14 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'Create a summary sheet from the current selection');
-    await user.click(screen.getByRole('button', { name: /发送/i }));
+    await user.type(screen.getByRole('textbox', { name: /消息输入框|message composer/i }), 'Create a summary sheet from the current selection');
+    await user.click(screen.getByRole('button', { name: /发送|send/i }));
 
     expect(
       await screen.findByText(/create a summary sheet and write the selected rows/i),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /确认/i }));
+    await user.click(screen.getByRole('button', { name: /确认|confirm/i }));
 
     expect(mockedBridge.runAgent).toHaveBeenNthCalledWith(1, {
       userInput: 'Create a summary sheet from the current selection',
@@ -700,15 +739,15 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'add sheet Summary');
-    await user.click(screen.getByRole('button', { name: /发送/i }));
+    await user.type(screen.getByRole('textbox', { name: /消息输入框|message composer/i }), 'add sheet Summary');
+    await user.click(screen.getByRole('button', { name: /发送|send/i }));
 
     expect(
-      await screen.findByText(/确认 Excel 操作/i),
+      await screen.findByText(/确认 Excel 操作|confirm excel action/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/add worksheet "summary"/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /确认/i }));
+    await user.click(screen.getByRole('button', { name: /确认|confirm/i }));
 
     expect(mockedBridge.executeExcelCommand).toHaveBeenNthCalledWith(1, {
       commandType: 'excel.addWorksheet',
@@ -756,13 +795,13 @@ describe('App shell', () => {
 
     render(<App />);
 
-    const composer = screen.getByRole('textbox', { name: /message composer/i });
-    const sendButton = screen.getByRole('button', { name: /发送/i });
+    const composer = screen.getByRole('textbox', { name: /消息输入框|message composer/i });
+    const sendButton = screen.getByRole('button', { name: /发送|send/i });
     await user.type(composer, '/upload_data upload selected data to Project A');
     await user.click(sendButton);
 
     expect(
-      await screen.findByText(/确认 Excel 操作/i),
+      await screen.findByText(/确认 Excel 操作|confirm excel action/i),
     ).toBeInTheDocument();
     expect(composer).toBeDisabled();
     expect(sendButton).toBeDisabled();
@@ -781,12 +820,12 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.click(await screen.findByRole('button', { name: /打开会话列表/i }));
-    const sidebar = await screen.findByRole('complementary', { name: /sessions drawer/i });
-    await screen.findByRole('heading', { name: /new chat/i });
+    await user.click(await screen.findByRole('button', { name: /打开会话列表|open sessions drawer/i }));
+    const sidebar = await screen.findByRole('complementary', { name: /会话抽屉|sessions drawer/i });
+    await screen.findByRole('heading', { name: /未命名会话|untitled/i });
 
-    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'read selection');
-    await user.click(screen.getByRole('button', { name: /发送/i }));
+    await user.type(screen.getByRole('textbox', { name: /消息输入框|message composer/i }), 'read selection');
+    await user.click(screen.getByRole('button', { name: /发送|send/i }));
     await user.click(within(sidebar).getByRole('button', { name: /review notes/i }));
 
     expect(
@@ -804,8 +843,8 @@ describe('App shell', () => {
       screen.queryByText(/read selection from sheet1 a1:c4/i),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /打开会话列表/i }));
-    const reopenedSidebar = await screen.findByRole('complementary', { name: /sessions drawer/i });
+    await user.click(screen.getByRole('button', { name: /打开会话列表|open sessions drawer/i }));
+    const reopenedSidebar = await screen.findByRole('complementary', { name: /会话抽屉|sessions drawer/i });
     await user.click(within(reopenedSidebar).getByText(/read selection/i));
 
     expect(
@@ -855,8 +894,8 @@ describe('App shell', () => {
 
     render(<App />);
 
-    await user.type(screen.getByRole('textbox', { name: /message composer/i }), '把选中数据上传到项目A');
-    await user.click(screen.getByRole('button', { name: /发送/i }));
+    await user.type(screen.getByRole('textbox', { name: /消息输入框|message composer/i }), '把选中数据上传到项目A');
+    await user.click(screen.getByRole('button', { name: /发送|send/i }));
 
     expect(mockedBridge.runSkill).toHaveBeenNthCalledWith(1, {
       userInput: '把选中数据上传到项目A',
@@ -866,7 +905,7 @@ describe('App shell', () => {
       await screen.findByText(/upload 2 row\(s\) to 项目a/i),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /确认/i }));
+    await user.click(screen.getByRole('button', { name: /确认|confirm/i }));
 
     expect(mockedBridge.runSkill).toHaveBeenNthCalledWith(2, {
       userInput: '把选中数据上传到项目A',
@@ -890,11 +929,11 @@ describe('App shell', () => {
 
     render(<App />);
 
-    expect(await screen.findByRole('region', { name: /message thread/i })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: /消息线程|message thread/i })).toBeInTheDocument();
     expect(scrollToSpy).toHaveBeenCalled();
 
     scrollToSpy.mockClear();
-    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'Create a summary sheet{enter}');
+    await user.type(screen.getByRole('textbox', { name: /消息输入框|message composer/i }), 'Create a summary sheet{enter}');
 
     expect(await screen.findByText(/i can help with the current selection/i)).toBeInTheDocument();
     expect(scrollToSpy).toHaveBeenCalled();

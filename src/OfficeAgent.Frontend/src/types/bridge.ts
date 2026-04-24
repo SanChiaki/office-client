@@ -1,3 +1,6 @@
+export type UiLocale = 'zh' | 'en';
+export type UiLanguageOverride = 'system' | UiLocale;
+
 export interface BridgeRequestEnvelope<TPayload = unknown> {
   type: string;
   requestId: string;
@@ -16,12 +19,12 @@ export interface AppSettings {
   model: string;
   ssoUrl: string;
   ssoLoginSuccessPath: string;
-  uiLanguageOverride?: 'system' | 'zh' | 'en';
+  uiLanguageOverride?: UiLanguageOverride;
 }
 
 export interface HostContext {
-  resolvedUiLocale: 'zh' | 'en';
-  uiLanguageOverride: 'system' | 'zh' | 'en';
+  resolvedUiLocale: UiLocale;
+  uiLanguageOverride: UiLanguageOverride;
 }
 
 export interface LoginResult {

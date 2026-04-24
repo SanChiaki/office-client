@@ -161,6 +161,30 @@ describe('NativeBridge', () => {
     });
   });
 
+  it('keeps browser preview host context English unless the saved override changes', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await expect(bridge.getHostContext()).resolves.toEqual({
+      resolvedUiLocale: 'en',
+      uiLanguageOverride: 'system',
+    });
+
+    await bridge.saveSettings({
+      apiKey: '',
+      baseUrl: 'https://api.example.com',
+      businessBaseUrl: '',
+      model: 'gpt-5-mini',
+      ssoUrl: '',
+      ssoLoginSuccessPath: '',
+      uiLanguageOverride: 'en',
+    });
+
+    await expect(bridge.getHostContext()).resolves.toEqual({
+      resolvedUiLocale: 'en',
+      uiLanguageOverride: 'en',
+    });
+  });
+
   it('returns write-command previews in browser preview mode', async () => {
     const bridge = new NativeBridge(undefined);
 
