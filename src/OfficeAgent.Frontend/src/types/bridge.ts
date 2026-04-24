@@ -47,6 +47,7 @@ export interface ChatMessage {
 export interface ChatSession {
   id: string;
   title: string;
+  isSystemUntitled?: boolean;
   createdAtUtc: string;
   updatedAtUtc: string;
   messages: ChatMessage[];

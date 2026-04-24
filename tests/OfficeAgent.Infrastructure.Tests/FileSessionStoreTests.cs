@@ -71,6 +71,7 @@ namespace OfficeAgent.Infrastructure.Tests
                     {
                         Id = "session-1",
                         Title = "Upload data",
+                        IsSystemUntitled = false,
                         CreatedAtUtc = new DateTime(2026, 3, 29, 6, 0, 0, DateTimeKind.Utc),
                         UpdatedAtUtc = new DateTime(2026, 3, 29, 6, 5, 0, DateTimeKind.Utc),
                         Messages =
@@ -93,8 +94,42 @@ namespace OfficeAgent.Infrastructure.Tests
             Assert.Equal("session-1", actual.ActiveSessionId);
             Assert.Single(actual.Sessions);
             Assert.Equal("Upload data", actual.Sessions[0].Title);
+            Assert.False(actual.Sessions[0].IsSystemUntitled);
             Assert.Single(actual.Sessions[0].Messages);
             Assert.Equal("Upload the selected rows", actual.Sessions[0].Messages[0].Content);
+        }
+
+        [Fact]
+        public void LoadMarksLegacyNewChatSessionsAsSystemUntitled()
+        {
+            Directory.CreateDirectory(tempDirectory);
+            File.WriteAllText(
+                Path.Combine(tempDirectory, "sessions.json"),
+                "{\n  \"activeSessionId\": \"session-1\",\n  \"sessions\": [ { \"id\": \"session-1\", \"title\": \"New chat\", \"messages\": [] } ]\n}");
+
+            var store = new FileSessionStore(tempDirectory);
+
+            var state = store.Load();
+
+            Assert.Single(state.Sessions);
+            Assert.True(state.Sessions[0].IsSystemUntitled);
+        }
+
+        [Fact]
+        public void LoadPreservesExplicitNonSystemUntitledFlagForLegacyPlaceholderTitles()
+        {
+            Directory.CreateDirectory(tempDirectory);
+            File.WriteAllText(
+                Path.Combine(tempDirectory, "sessions.json"),
+                "{\n  \"activeSessionId\": \"session-1\",\n  \"sessions\": [ { \"id\": \"session-1\", \"title\": \"New chat\", \"isSystemUntitled\": false, \"messages\": [] } ]\n}");
+
+            var store = new FileSessionStore(tempDirectory);
+
+            var state = store.Load();
+
+            Assert.Single(state.Sessions);
+            Assert.False(state.Sessions[0].IsSystemUntitled);
+            Assert.Equal("New chat", state.Sessions[0].Title);
         }
 
         public void Dispose()

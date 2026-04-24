@@ -9,6 +9,8 @@ namespace OfficeAgent.Core.Models
 
         public string Title { get; set; } = string.Empty;
 
+        public bool? IsSystemUntitled { get; set; }
+
         public DateTime CreatedAtUtc { get; set; }
 
         public DateTime UpdatedAtUtc { get; set; }

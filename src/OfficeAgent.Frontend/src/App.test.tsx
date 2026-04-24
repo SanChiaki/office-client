@@ -266,6 +266,44 @@ describe('App shell', () => {
     expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument();
   });
 
+  it('keeps an explicitly chosen legacy placeholder title after reload when persisted ownership is false', async () => {
+    const user = userEvent.setup();
+    mockedBridge.getHostContext.mockResolvedValueOnce({
+      resolvedUiLocale: 'en',
+      uiLanguageOverride: 'system',
+    });
+    mockedBridge.getSessions.mockResolvedValueOnce({
+      activeSessionId: 'browser-preview-session',
+      sessions: [
+        {
+          id: 'browser-preview-session',
+          title: 'Browser preview',
+          isSystemUntitled: false,
+          createdAtUtc: '2026-03-29T00:00:00.0000000Z',
+          updatedAtUtc: '2026-03-29T00:00:00.0000000Z',
+          messages: [],
+        } as never,
+        {
+          id: 'user-new-chat-session',
+          title: 'New chat',
+          isSystemUntitled: false,
+          createdAtUtc: '2026-03-29T00:00:00.0000000Z',
+          updatedAtUtc: '2026-03-29T00:00:00.0000000Z',
+          messages: [],
+        } as never,
+      ],
+    });
+
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: /open sessions drawer/i }));
+    const sidebar = await screen.findByRole('complementary', { name: /sessions drawer/i });
+    await user.click(within(sidebar).getByRole('button', { name: /^new chat$/i }));
+
+    expect(await screen.findByRole('heading', { name: /^new chat$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^untitled$/i })).not.toBeInTheDocument();
+  });
+
   it('does not persist a localized placeholder when renaming an untitled session without editing it', async () => {
     const user = userEvent.setup();
 

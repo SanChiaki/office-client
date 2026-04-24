@@ -9,6 +9,8 @@ namespace OfficeAgent.Infrastructure.Storage
 {
     public sealed class FileSessionStore
     {
+        private const string UntitledSessionStorageTitle = "New chat";
+        private const string LegacyUntitledSessionStorageTitle = "Untitled";
         private readonly string storageDirectory;
 
         public FileSessionStore(string storageDirectory)
@@ -68,6 +70,7 @@ namespace OfficeAgent.Infrastructure.Storage
                 session.Messages = session.Messages?
                     .Where(message => message != null)
                     .ToList() ?? new List<ChatMessage>();
+                session.IsSystemUntitled = session.IsSystemUntitled ?? IsLegacySystemUntitledSession(session);
             }
 
             state.Sessions = sanitizedSessions;
@@ -93,12 +96,20 @@ namespace OfficeAgent.Infrastructure.Storage
                     new ChatSession
                     {
                         Id = sessionId,
-                        Title = "New chat",
+                        Title = UntitledSessionStorageTitle,
+                        IsSystemUntitled = true,
                         CreatedAtUtc = timestamp,
                         UpdatedAtUtc = timestamp,
                     },
                 },
             };
+        }
+
+        private static bool IsLegacySystemUntitledSession(ChatSession session)
+        {
+            return session.Messages.Count == 0
+                && (string.Equals(session.Title, UntitledSessionStorageTitle, StringComparison.Ordinal)
+                    || string.Equals(session.Title, LegacyUntitledSessionStorageTitle, StringComparison.Ordinal));
         }
     }
 }

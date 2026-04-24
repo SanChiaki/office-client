@@ -153,6 +153,7 @@ describe('NativeBridge', () => {
         {
           id: 'browser-preview-session',
           title: 'Browser preview',
+          isSystemUntitled: false,
           createdAtUtc: '2026-03-29T00:00:00.0000000Z',
           updatedAtUtc: '2026-03-29T00:00:00.0000000Z',
           messages: [],

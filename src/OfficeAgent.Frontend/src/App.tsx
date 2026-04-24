@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { nativeBridge } from './bridge/nativeBridge';
 import { ConfirmationCard } from './components/ConfirmationCard';
-import { getUiStrings, isLegacySystemUntitledSessionTitle, UNTITLED_SESSION_STORAGE_TITLE } from './i18n/uiStrings';
+import { getUiStrings, UNTITLED_SESSION_STORAGE_TITLE } from './i18n/uiStrings';
 import type {
   AgentPlan,
   AgentRequestEnvelope,
@@ -143,7 +143,7 @@ export function App() {
 
           // Check if the most recent session is a usable new chat (empty " untitled and no messages)
           let reusableSession: ChatSession | undefined;
-          if (latestSession && isLegacySystemUntitledSessionTitle(latestSession.title) && latestSession.messages.length === 0) {
+          if (latestSession && latestSession.isSystemUntitled === true && latestSession.messages.length === 0) {
             reusableSession = latestSession;
           }
 
@@ -161,6 +161,7 @@ export function App() {
             const newSession: ChatSession = {
               id,
               title: UNTITLED_SESSION_STORAGE_TITLE,
+              isSystemUntitled: true,
               createdAtUtc: now,
               updatedAtUtc: now,
               messages: [],
@@ -384,6 +385,7 @@ export function App() {
     const newSession: ChatSession = {
       id,
       title: UNTITLED_SESSION_STORAGE_TITLE,
+      isSystemUntitled: true,
       createdAtUtc: now,
       updatedAtUtc: now,
       messages: [],
@@ -428,7 +430,7 @@ export function App() {
     }
 
     setSessions((current) =>
-      current.map((s) => s.id === renamingSessionId ? { ...s, title: trimmed } : s),
+      current.map((s) => s.id === renamingSessionId ? { ...s, title: trimmed, isSystemUntitled: false } : s),
     );
     setSystemUntitledSessionIds((current) => {
       if (!isSystemUntitled) {
@@ -638,7 +640,7 @@ export function App() {
 
     setSessions((current) =>
       current.map((s) =>
-        s.id === activeSession.id ? { ...s, title: newTitle } : s,
+        s.id === activeSession.id ? { ...s, title: newTitle, isSystemUntitled: false } : s,
       ),
     );
     setSystemUntitledSessionIds((current) => {
@@ -1262,7 +1264,7 @@ function findSessionById(sessions: ChatSession[], sessionId: string): ChatSessio
 
 function deriveSystemUntitledSessionIds(sessions: ChatSession[]) {
   return sessions.reduce<Record<string, true>>((accumulator, session) => {
-    if (session.messages.length === 0 && isLegacySystemUntitledSessionTitle(session.title)) {
+    if (session.isSystemUntitled === true) {
       accumulator[session.id] = true;
     }
 
