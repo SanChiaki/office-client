@@ -72,6 +72,7 @@
         Vital="yes"
         Compressed="yes"
         InstallCondition="VersionNT64 = 0">
+        <MsiProperty Name="SKIPVSTORUNTIMECHECK" Value="1" />
         <MsiProperty Name="SKIPWEBVIEW2CHECK" Value="1" />
       </MsiPackage>
 
@@ -83,6 +84,7 @@
         Vital="yes"
         Compressed="yes"
         InstallCondition="VersionNT64">
+        <MsiProperty Name="SKIPVSTORUNTIMECHECK" Value="1" />
         <MsiProperty Name="SKIPWEBVIEW2CHECK" Value="1" />
       </MsiPackage>
     </Chain>

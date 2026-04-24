@@ -91,7 +91,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
         }
 
         [Fact]
-        public void SetupBundlePassesWebViewBypassPropertyToMsiPackages()
+        public void SetupBundlePassesPrerequisiteBypassPropertiesToMsiPackages()
         {
             var bundleWxsText = ReadRepositoryFile(
                 "installer",
@@ -103,7 +103,13 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 bundleWxsText.Split(new[] { "Name=\"SKIPWEBVIEW2CHECK\"" }, StringSplitOptions.None).Length - 1);
             Assert.Equal(
                 2,
-                bundleWxsText.Split(new[] { "Value=\"1\"" }, StringSplitOptions.None).Length - 1);
+                bundleWxsText.Split(new[] { "Name=\"SKIPVSTORUNTIMECHECK\"" }, StringSplitOptions.None).Length - 1);
+            Assert.Equal(
+                2,
+                bundleWxsText.Split(new[] { "<MsiProperty Name=\"SKIPWEBVIEW2CHECK\" Value=\"1\" />" }, StringSplitOptions.None).Length - 1);
+            Assert.Equal(
+                2,
+                bundleWxsText.Split(new[] { "<MsiProperty Name=\"SKIPVSTORUNTIMECHECK\" Value=\"1\" />" }, StringSplitOptions.None).Length - 1);
         }
 
         [Fact]
@@ -134,6 +140,10 @@ namespace OfficeAgent.ExcelAddIn.Tests
                 StringComparison.Ordinal);
             Assert.Contains(
                 "Install the VSTO runtime, then run this installer again.",
+                productWxsText,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "SKIPVSTORUNTIMECHECK",
                 productWxsText,
                 StringComparison.Ordinal);
             Assert.Contains(

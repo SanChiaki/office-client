@@ -10,7 +10,7 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of OfficeAgent is already installed." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
     <Launch
-      Condition="Installed OR VSTORUNTIMEVERSION OR VSTORUNTIMEWOW6432VERSION OR VSTORUNTIMEINSTALL = 1 OR VSTORUNTIMEWOW6432INSTALL = 1"
+      Condition="Installed OR SKIPVSTORUNTIMECHECK = 1 OR VSTORUNTIMEVERSION OR VSTORUNTIMEWOW6432VERSION OR VSTORUNTIMEINSTALL = 1 OR VSTORUNTIMEWOW6432INSTALL = 1"
       Message="OfficeAgent requires the Microsoft Visual Studio Tools for Office Runtime 4.0 or later. Install the VSTO runtime, then run this installer again." />
     <Launch
       Condition="Installed OR SKIPWEBVIEW2CHECK = 1 OR WEBVIEW2RUNTIMEWOW6432 OR WEBVIEW2RUNTIMENATIVE OR WEBVIEW2RUNTIMEUSER"
