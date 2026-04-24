@@ -48,10 +48,15 @@ type PendingConfirmation = {
   preview: ExcelCommandPreview;
 };
 
+type BridgeStatusState =
+  | { kind: 'connecting' }
+  | { kind: 'connected'; host: string; version: string }
+  | { kind: 'unavailable'; errorMessage: string };
+
 export function App() {
   const [uiLocale, setUiLocale] = useState<UiLocale>('en');
   const strings = getUiStrings(uiLocale);
-  const [bridgeStatus, setBridgeStatus] = useState(strings.bridgeConnecting);
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatusState>({ kind: 'connecting' });
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState('');
   const [isSessionsDrawerOpen, setIsSessionsDrawerOpen] = useState(false);
@@ -85,32 +90,37 @@ export function App() {
   const [loginStatus, setLoginStatus] = useState<LoginStatus | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const bridgeStatusText = formatBridgeStatus(bridgeStatus, strings);
 
   useEffect(() => {
     document.documentElement.lang = uiLocale;
   }, [uiLocale]);
 
   useEffect(() => {
+    setSessionThreads((current) => relocalizeWelcomeMessages(current, uiLocale));
+  }, [uiLocale]);
+
+  useEffect(() => {
     let isActive = true;
     let startupLocale: UiLocale = 'en';
 
-    const hostContextPromise = nativeBridge
-      .getHostContext()
-      .then((result: HostContext) => {
+    const hostContextRequest = nativeBridge.getHostContext().catch(() => null);
+    void hostContextRequest.then((result) => {
+      if (!isActive || !result) {
+        return;
+      }
+
+      setUiLocale(result.resolvedUiLocale);
+    });
+
+    const hostContextPromise = readHostContextWithTimeout(hostContextRequest)
+      .then((result) => {
         if (!isActive) {
           return;
         }
 
-        startupLocale = result.resolvedUiLocale;
-        setUiLocale(result.resolvedUiLocale);
-      })
-      .catch(() => {
-        if (!isActive) {
-          return;
-        }
-
-        startupLocale = 'en';
-        setUiLocale('en');
+        startupLocale = result?.resolvedUiLocale ?? 'en';
+        setUiLocale(startupLocale);
       });
 
     void hostContextPromise.finally(() => {
@@ -121,14 +131,21 @@ export function App() {
             return;
           }
 
-          setBridgeStatus(getUiStrings(startupLocale).bridgeConnected(result.host, result.version));
+          setBridgeStatus({
+            kind: 'connected',
+            host: result.host,
+            version: result.version,
+          });
         })
         .catch((error: Error) => {
           if (!isActive) {
             return;
           }
 
-          setBridgeStatus(getUiStrings(startupLocale).bridgeUnavailable(error.message));
+          setBridgeStatus({
+            kind: 'unavailable',
+            errorMessage: error.message,
+          });
         });
 
       nativeBridge
@@ -539,6 +556,13 @@ export function App() {
       isSettingsOpenRef.current = false;
       shouldRestoreSettingsButtonFocusRef.current = true;
       setIsSettingsOpen(false);
+      void nativeBridge.getHostContext()
+        .then((hostContext) => {
+          setUiLocale(hostContext.resolvedUiLocale);
+        })
+        .catch(() => {
+          // best-effort refresh
+        });
     } catch (error) {
       setSettingsSaveError(error instanceof Error ? error.message : strings.settingsSaveFailed);
     } finally {
@@ -709,12 +733,12 @@ export function App() {
         setSessionPendingConfirmation(sessionId, {
           kind: 'excel',
           command,
-          preview: result.preview,
+          preview: createLocalizedExcelPreview(command, result.preview, result.selectionContext ?? selectionContext, uiLocale),
         });
         appendThreadMessage(sessionId, {
           id: createMessageId(),
           role: 'assistant',
-          content: result.message,
+          content: getUiStrings(uiLocale).browserPreviewExcelConfirmMessage,
         });
         return;
       }
@@ -746,9 +770,9 @@ export function App() {
             confirmed: false,
             uploadPreview: result.uploadPreview,
           },
-          preview: result.preview,
+          preview: createLocalizedSkillPreview(result.preview, result.uploadPreview, uiLocale),
         });
-        appendThreadMessage(sessionId, createSkillResultMessage(result));
+        appendThreadMessage(sessionId, createLocalizedSkillPreviewMessage(result, uiLocale));
         return;
       }
 
@@ -796,7 +820,7 @@ export function App() {
       }
 
       setSessionPendingConfirmation(sessionId, null);
-      appendThreadMessages(sessionId, createAgentResultMessages(result));
+      appendThreadMessages(sessionId, createAgentResultMessages(result, uiLocale));
     } catch (error) {
       appendThreadMessage(sessionId, {
         id: createMessageId(),
@@ -1065,11 +1089,11 @@ export function App() {
             {settingsSaveError ? <p className="settings-error" role="alert">{settingsSaveError}</p> : null}
 
             <label className="settings-field">
-              <span>API Key</span>
+              <span>{strings.apiKeyFieldLabel}</span>
               <div className="settings-field__input-wrapper">
                 <input
                   ref={apiKeyInputRef}
-                  aria-label="API Key"
+                  aria-label={strings.apiKeyFieldLabel}
                   type={showApiKey ? 'text' : 'password'}
                   value={draftSettings.apiKey}
                   disabled={isSettingsSaving}
@@ -1088,9 +1112,9 @@ export function App() {
             </label>
 
             <label className="settings-field">
-              <span>Base URL</span>
+              <span>{strings.baseUrlFieldLabel}</span>
               <input
-                aria-label="Base URL"
+                aria-label={strings.baseUrlFieldLabel}
                 type="text"
                 value={draftSettings.baseUrl}
                 disabled={isSettingsSaving}
@@ -1099,9 +1123,9 @@ export function App() {
             </label>
 
             <label className="settings-field">
-              <span>Business Base URL</span>
+              <span>{strings.businessBaseUrlFieldLabel}</span>
               <input
-                aria-label="Business Base URL"
+                aria-label={strings.businessBaseUrlFieldLabel}
                 type="text"
                 value={draftSettings.businessBaseUrl}
                 disabled={isSettingsSaving}
@@ -1110,9 +1134,9 @@ export function App() {
             </label>
 
             <label className="settings-field">
-              <span>Model</span>
+              <span>{strings.modelFieldLabel}</span>
               <input
-                aria-label="Model"
+                aria-label={strings.modelFieldLabel}
                 type="text"
                 value={draftSettings.model}
                 disabled={isSettingsSaving}
@@ -1121,9 +1145,9 @@ export function App() {
             </label>
 
             <label className="settings-field">
-              <span>SSO URL</span>
+              <span>{strings.ssoUrlFieldLabel}</span>
               <input
-                aria-label="SSO URL"
+                aria-label={strings.ssoUrlFieldLabel}
                 type="text"
                 value={draftSettings.ssoUrl}
                 disabled={isSettingsSaving || isLoggingIn}
@@ -1180,7 +1204,7 @@ export function App() {
                 {strings.save}
               </button>
             </div>
-            <div className="settings-version">{bridgeStatus}</div>
+            <div className="settings-version">{bridgeStatusText}</div>
           </section>
         </div>
       ) : null}
@@ -1223,6 +1247,32 @@ function threadToChatMessages(messages: ThreadMessage[]): Array<{ id: string; ro
       content: m.content,
       createdAtUtc: new Date().toISOString(),
     }));
+}
+
+function relocalizeWelcomeMessages(currentThreads: Record<string, ThreadMessage[]>, locale: UiLocale) {
+  const welcomeMessage = getUiStrings(locale).welcomeMessage;
+  let hasChanges = false;
+  const nextThreads: Record<string, ThreadMessage[]> = {};
+
+  Object.entries(currentThreads).forEach(([sessionId, thread]) => {
+    let threadChanged = false;
+    const nextThread = thread.map((message) => {
+      if (message.id !== 'welcome-message' || message.content === welcomeMessage) {
+        return message;
+      }
+
+      threadChanged = true;
+      return {
+        ...message,
+        content: welcomeMessage,
+      };
+    });
+
+    nextThreads[sessionId] = threadChanged ? nextThread : thread;
+    hasChanges = hasChanges || threadChanged;
+  });
+
+  return hasChanges ? nextThreads : currentThreads;
 }
 
 function createInitialThreadMessages(session: ChatSession | undefined, locale: UiLocale): ThreadMessage[] {
@@ -1302,7 +1352,8 @@ function createSkillResultMessage(result: SkillResult): ThreadMessage {
   };
 }
 
-function createAgentResultMessages(result: AgentResult): ThreadMessage[] {
+function createAgentResultMessages(result: AgentResult, locale: UiLocale): ThreadMessage[] {
+  const strings = getUiStrings(locale);
   const messages: ThreadMessage[] = [
     {
       id: createMessageId(),
@@ -1316,7 +1367,7 @@ function createAgentResultMessages(result: AgentResult): ThreadMessage[] {
       messages.push({
         id: createMessageId(),
         role: 'system',
-        content: `${step.status} · ${step.title}${step.errorMessage ? ` · ${step.errorMessage}` : ''}`.trim(),
+        content: `${strings.formatJournalStatus(step.status)} · ${step.title}${step.errorMessage ? ` · ${step.errorMessage}` : ''}`.trim(),
       });
     });
   }
@@ -1334,6 +1385,97 @@ function createPlanPreview(result: AgentResult, locale: UiLocale): ExcelCommandP
   };
 }
 
+function createLocalizedExcelPreview(
+  command: ExcelCommand,
+  preview: ExcelCommandPreview,
+  selectionContext: SelectionContext | null,
+  locale: UiLocale,
+): ExcelCommandPreview {
+  const strings = getUiStrings(locale);
+  const workbookName = selectionContext?.workbookName?.trim() ?? '';
+  const localizedWorkbookDetails = localizeWorkbookDetails(preview.details, workbookName, locale);
+
+  switch (command.commandType) {
+    case 'excel.addWorksheet':
+      return {
+        title: strings.excelAddWorksheetPreviewTitle,
+        summary: strings.formatExcelAddWorksheetPreviewSummary(String(command.newSheetName ?? '').trim()),
+        details: localizedWorkbookDetails,
+      };
+    case 'excel.renameWorksheet':
+      return {
+        title: strings.excelRenameWorksheetPreviewTitle,
+        summary: strings.formatExcelRenameWorksheetPreviewSummary(
+          String(command.sheetName ?? '').trim(),
+          String(command.newSheetName ?? '').trim(),
+        ),
+        details: localizedWorkbookDetails,
+      };
+    case 'excel.deleteWorksheet':
+      return {
+        title: strings.excelDeleteWorksheetPreviewTitle,
+        summary: strings.formatExcelDeleteWorksheetPreviewSummary(String(command.sheetName ?? '').trim()),
+        details: localizedWorkbookDetails,
+      };
+    case 'excel.writeRange':
+      return {
+        title: strings.excelWriteRangePreviewTitle,
+        summary: strings.formatExcelWriteRangePreviewSummary(
+          command.values?.length ?? 0,
+          command.values?.[0]?.length ?? 0,
+          String(command.targetAddress ?? '').trim(),
+        ),
+        details: preview.details,
+      };
+    default:
+      return preview;
+  }
+}
+
+function createLocalizedSkillPreview(preview: ExcelCommandPreview, uploadPreview: UploadPreview | undefined, locale: UiLocale) {
+  if (!uploadPreview) {
+    return preview;
+  }
+
+  const strings = getUiStrings(locale);
+  return {
+    title: strings.uploadPreviewTitle,
+    summary: strings.formatUploadPreviewSummary(uploadPreview.records.length, uploadPreview.projectName),
+    details: localizeUploadPreviewDetails(preview.details, uploadPreview, locale),
+  };
+}
+
+function createLocalizedSkillPreviewMessage(result: SkillResult, locale: UiLocale): ThreadMessage {
+  const projectName = result.uploadPreview?.projectName?.trim();
+  return {
+    id: createMessageId(),
+    role: 'assistant',
+    content: projectName
+      ? getUiStrings(locale).browserPreviewUploadReviewMessage(projectName)
+      : result.message,
+    table: createTableFromUploadPreview(result.uploadPreview),
+  };
+}
+
+function readHostContextWithTimeout(hostContextPromise: Promise<HostContext | null>, timeoutMs: number = 1500): Promise<HostContext | null> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timeoutId = setTimeout(() => resolve(null), timeoutMs);
+  });
+
+  return Promise.race<HostContext | null>([
+    hostContextPromise,
+    timeoutPromise,
+  ])
+    .catch(() => null)
+    .finally(() => {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+    });
+}
+
 function createTableFromUploadPreview(preview?: UploadPreview): ExcelTableData | undefined {
   if (!preview) {
     return undefined;
@@ -1345,6 +1487,82 @@ function createTableFromUploadPreview(preview?: UploadPreview): ExcelTableData |
     headers: preview.headers,
     rows: preview.rows,
   };
+}
+
+function localizeWorkbookDetails(hostDetails: string[] | undefined, workbookName: string, locale: UiLocale) {
+  if (!workbookName) {
+    return hostDetails ?? [];
+  }
+
+  const localizedDetail = getUiStrings(locale).formatWorkbookDetail(workbookName);
+  const knownDetails = [
+    localizedDetail,
+    getUiStrings('zh').formatWorkbookDetail(workbookName),
+    getUiStrings('en').formatWorkbookDetail(workbookName),
+  ];
+
+  return dedupeDetails([
+    localizedDetail,
+    ...(hostDetails ?? []).filter((detail) => !matchesKnownDetail(detail, knownDetails)),
+  ]);
+}
+
+function localizeUploadPreviewDetails(hostDetails: string[] | undefined, uploadPreview: UploadPreview, locale: UiLocale) {
+  const localizedStrings = getUiStrings(locale);
+  const localizedSourceDetail = localizedStrings.formatUploadPreviewSourceDetail(uploadPreview.sheetName, uploadPreview.address);
+  const localizedFieldsDetail = localizedStrings.formatUploadPreviewFieldsDetail(uploadPreview.headers);
+  const knownSourceDetails = [
+    localizedSourceDetail,
+    getUiStrings('zh').formatUploadPreviewSourceDetail(uploadPreview.sheetName, uploadPreview.address),
+    getUiStrings('en').formatUploadPreviewSourceDetail(uploadPreview.sheetName, uploadPreview.address),
+  ];
+  const knownFieldsDetails = [
+    localizedFieldsDetail,
+    getUiStrings('zh').formatUploadPreviewFieldsDetail(uploadPreview.headers),
+    getUiStrings('en').formatUploadPreviewFieldsDetail(uploadPreview.headers),
+  ];
+
+  return dedupeDetails([
+    localizedSourceDetail,
+    localizedFieldsDetail,
+    ...(hostDetails ?? []).filter((detail) => (
+      !matchesKnownDetail(detail, knownSourceDetails) &&
+      !matchesKnownDetail(detail, knownFieldsDetails)
+    )),
+  ]);
+}
+
+function matchesKnownDetail(detail: string, knownDetails: string[]) {
+  const normalizedDetail = normalizeDetail(detail);
+  return normalizedDetail.length > 0 && knownDetails.some((candidate) => normalizeDetail(candidate) === normalizedDetail);
+}
+
+function normalizeDetail(detail: string) {
+  return detail.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function dedupeDetails(details: string[]) {
+  const seen = new Set<string>();
+  return details.filter((detail) => {
+    const normalized = normalizeDetail(detail);
+    if (!normalized || seen.has(normalized)) {
+      return false;
+    }
+
+    seen.add(normalized);
+    return true;
+  });
+}
+
+function formatBridgeStatus(status: BridgeStatusState, strings: ReturnType<typeof getUiStrings>) {
+  switch (status.kind) {
+    case 'connected':
+      return strings.bridgeConnected(status.host, status.version);
+    case 'unavailable':
+      return strings.bridgeUnavailable(status.errorMessage);
+    default:
+      return strings.bridgeConnecting;
+  }
 }
 
 function formatPlanStep(step: AgentPlan['steps'][number], locale: UiLocale) {

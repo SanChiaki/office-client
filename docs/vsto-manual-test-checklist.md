@@ -24,13 +24,20 @@
 
 ## Task Pane
 
+- Run the task-pane checks twice: once under Chinese Excel (`zh-*` UI) and once under English Excel (any non-`zh-*` UI).
+- In Chinese Excel, confirm the fixed task-pane UI and frontend system messages render in Chinese.
+- In English Excel, confirm the fixed task-pane UI and frontend system messages render in English.
+- In English Excel, trigger one host-generated task-pane error or fallback path and confirm the copy renders in English.
+- In browser preview mode, confirm the fixed UI defaults to English before any explicit `uiLanguageOverride` is saved.
+- In English Excel, send a Chinese free-form prompt and confirm the AI reply still follows the prompt language when possible instead of being forced to English.
+- In Chinese Excel, send an English free-form prompt and confirm the AI reply can still stay in English when appropriate.
 - Use the Ribbon button to open and close the task pane repeatedly.
 - Confirm the task pane does not duplicate after repeated toggles.
 - Confirm the WebView2 missing-runtime fallback message appears if WebView2 is not installed.
 
 ## Session And Settings
 
-- Open Settings and save `API Key`, `Base URL`, `Business Base URL`, `Model`, `SSO URL`, and `登录成功路径`.
+- Open Settings and save `API Key`, `Base URL`, `Business Base URL`, `Model`, `SSO URL`, and `登录成功路径` / `Login success path`.
 - Confirm `Base URL` stays reserved for the LLM endpoint and `Business Base URL` points to the business API or mock server.
 - Restart Excel and confirm settings reload correctly.
 - Create or switch sessions and confirm existing thread history is preserved per session.
@@ -57,40 +64,45 @@
 
 ## Ribbon Sync
 
+- Run the Ribbon Sync checks twice: once under Chinese Excel (`zh-*` UI) and once under English Excel (any non-`zh-*` UI).
+- In Chinese Excel, confirm the Ribbon group/button labels, project dropdown statuses, login popup, layout dialog, and native confirmation/result dialogs render in Chinese.
+- In English Excel, confirm the Ribbon group/button labels, project dropdown statuses, login popup, layout dialog, and native confirmation/result dialogs render in English.
+- For the steps below, use the localized host labels for the current Excel UI. Key pairs: `初始化当前表` / `Initialize sheet`, `应用模板` / `Apply template`, `保存模板` / `Save template`, `另存模板` / `Save as template`, `部分下载` / `Partial download`, `部分上传` / `Partial upload`, `先选择项目` / `Select project`, `请先登录` / `Sign in first`, `无可用项目` / `No projects available`.
 - Bind a blank worksheet through the Ribbon project dropdown and confirm the layout dialog appears with defaults `HeaderStartRow = 1`, `HeaderRowCount = 2`, `DataStartRow = 3`.
 - Confirm the layout dialog and enter custom values, then verify `ISDP_Setting` writes one `SheetBindings` row with the user-entered layout values.
-- Confirming project selection should still not auto-initialize the current sheet; `SheetFieldMappings` remains unchanged until `初始化当前表` is clicked.
+- Confirming project selection should still not auto-initialize the current sheet; `SheetFieldMappings` remains unchanged until `初始化当前表` / `Initialize sheet` is clicked.
 - Open `ISDP_Setting` and confirm it uses one worksheet with three readable sections: `TemplateBindings` on top, `SheetBindings` in the middle, `SheetFieldMappings` below, each with a title row, a header row, and data rows.
 - Confirm `SheetFieldMappings` displays headers in this order: `HeaderType`, `ISDP L1`, `Excel L1`, `ISDP L2`, `Excel L2`, `HeaderId`, `ApiFieldKey`, `IsIdColumn`, `ActivityId`, `PropertyId`.
 - Confirm there are two blank separator rows between each adjacent metadata section, and that metadata is no longer stored as flattened `tableName + values` rows.
-- Switch to a worksheet with existing binding metadata and confirm the Ribbon dropdown automatically rehydrates that project as `ProjectId-DisplayName` instead of showing `先选择项目`.
-- Save a workbook with `ISDP_Setting` as the active sheet, reopen Excel from the desktop shortcut, and confirm the Ribbon dropdown shows `先选择项目` unless `SheetBindings` 里存在 `ISDP_Setting` 这条显式绑定记录。
-- Switch from a bound business sheet to `ISDP_Setting` and confirm the Ribbon dropdown clears back to `先选择项目` when `ISDP_Setting` itself has no binding.
-- Switch to a worksheet without binding metadata and confirm the Ribbon dropdown shows `先选择项目`.
+- Switch to a worksheet with existing binding metadata and confirm the Ribbon dropdown automatically rehydrates that project as `ProjectId-DisplayName` instead of showing the localized empty placeholder (`先选择项目` / `Select project`).
+- Save a workbook with `ISDP_Setting` as the active sheet, reopen Excel from the desktop shortcut, and confirm the Ribbon dropdown shows the localized empty placeholder (`先选择项目` / `Select project`) unless `SheetBindings` contains an explicit binding row for `ISDP_Setting`.
+- Switch from a bound business sheet to `ISDP_Setting` and confirm the Ribbon dropdown clears back to the localized empty placeholder (`先选择项目` / `Select project`) when `ISDP_Setting` itself has no binding.
+- Switch to a worksheet without binding metadata and confirm the Ribbon dropdown shows the localized empty placeholder (`先选择项目` / `Select project`).
 - Open two workbooks in the same Excel process, bind `Sheet1` in each workbook to different projects, switch back and forth between the two files, and confirm the Ribbon dropdown plus download/upload behavior always follow the active workbook's own `ISDP_Setting` metadata.
 - On a sheet that already has binding metadata, switch to another project and confirm the layout dialog defaults reuse the current sheet's saved layout values.
 - Increase Windows or Office UI font scaling, reopen the project layout dialog, and confirm all labels, inputs, and buttons remain fully visible without overlap.
+- Under both Chinese Excel and English Excel, trigger the unauthenticated path and confirm the native auth-required prompt plus login button text are localized for that host language.
 - Reselect the already bound project (`same systemKey + projectId`) and confirm no layout dialog appears and `SheetBindings` is not rewritten.
 - Cancel the layout dialog while switching projects and confirm both `ISDP_Setting` binding data and Ribbon dropdown project stay unchanged.
-- After switching to another project and confirming the dialog, verify old `SheetFieldMappings` are cleared; before clicking `初始化当前表`, running download/upload should report that the current sheet is not initialized.
+- After switching to another project and confirming the dialog, verify old `SheetFieldMappings` are cleared; before clicking `初始化当前表` / `Initialize sheet`, running download/upload should report that the current sheet is not initialized.
 - Enter invalid values in the layout dialog (for example overlaps between header/data regions) and confirm validation error is shown while keeping the dialog open.
-- Start Excel while unauthenticated against a protected project API and confirm the project dropdown shows `请先登录`.
-- Configure the project API to return an empty array and confirm the project dropdown shows `无可用项目`.
-- Click `初始化当前表` on a sheet that already contains business cells and confirm only `ISDP_Setting` changes; the business area should remain untouched.
-- Click `部分下载` and `部分上传` and confirm each action uses a native Office/WinForms confirmation dialog instead of the task pane.
-- Confirm the Ribbon includes a dedicated `模板` group with `应用模板`, `保存模板`, and `另存模板`.
-- Confirm the `下载` and `上传` controls are rendered in separate Ribbon groups, that the download group only shows `部分下载`, the upload group only shows `部分上传`, and that there is no `全量下载`, `全量上传`, or `增量上传` button.
-- In the same project, save two different local templates and confirm `应用模板` can list both.
+- Start Excel while unauthenticated against a protected project API and confirm the project dropdown shows the localized sign-in-required status (`请先登录` / `Sign in first`).
+- Configure the project API to return an empty array and confirm the project dropdown shows the localized empty-project status (`无可用项目` / `No projects available`).
+- Click `初始化当前表` / `Initialize sheet` on a sheet that already contains business cells and confirm only `ISDP_Setting` changes; the business area should remain untouched.
+- Click `部分下载` / `Partial download` and `部分上传` / `Partial upload` and confirm each action uses a native Office/WinForms confirmation dialog instead of the task pane.
+- Confirm the Ribbon includes a dedicated `模板` / `Template` group with `应用模板` / `Apply template`, `保存模板` / `Save template`, and `另存模板` / `Save as template`.
+- Confirm the `下载` / `Download` and `上传` / `Upload` controls are rendered in separate Ribbon groups, that the download group only shows `部分下载` / `Partial download`, the upload group only shows `部分上传` / `Partial upload`, and that there is no `全量下载`, `全量上传`, or `增量上传` button.
+- In the same project, save two different local templates and confirm `应用模板` / `Apply template` can list both.
 - Apply one template and confirm `TemplateBindings` updates to the selected template while `SheetBindings` / `SheetFieldMappings` are expanded into the current sheet.
-- Manually edit `ISDP_Setting` field mapping text after applying a template, click `保存模板`, then reapply that template and confirm the edited mapping is preserved.
-- With a sheet already bound to a template, use `另存模板`, confirm the new template name appears in the local template list, and confirm the current sheet's `TemplateBindings.TemplateId` switches to the new template.
-- Force a template revision conflict by editing the same template outside the workbook, then click `保存模板` and confirm the dialog offers overwrite, save-as, and cancel.
+- Manually edit `ISDP_Setting` field mapping text after applying a template, click `保存模板` / `Save template`, then reapply that template and confirm the edited mapping is preserved.
+- With a sheet already bound to a template, use `另存模板` / `Save as template`, confirm the new template name appears in the local template list, and confirm the current sheet's `TemplateBindings.TemplateId` switches to the new template.
+- Force a template revision conflict by editing the same template outside the workbook, then click `保存模板` / `Save template` and confirm the dialog offers overwrite, save-as, and cancel.
 - Open an older workbook that has no `TemplateBindings` section and confirm download, upload, and initialize still work.
-- Edit `ISDP_Setting` so `HeaderStartRow = 3`, `HeaderRowCount = 2`, and `DataStartRow = 6`, then run `全量下载` and confirm headers/data are written at the configured rows.
-- On a sheet that already has recognizable headers, run `全量下载` and confirm the plugin refreshes data cells without rewriting those existing headers.
-- Modify `Excel L1` or `Excel L2` in `SheetFieldMappings`, update the matching Excel header text manually, then run `部分下载` or `部分上传` and confirm the column still resolves by current header text.
-- Set one `single` mapping row to use both `Excel L1` and `Excel L2`, keep `HeaderRowCount = 2`, prepare matching grouped headers on the sheet, then run `部分下载` and confirm the grouped-single column resolves and only the selected child cells are refreshed.
-- Using the same grouped-single metadata and visible grouped headers, edit a grouped-single cell and run `部分上传`, then confirm the upload resolves that `single` field correctly and does not require converting it to a non-`single` field type.
-- Keep the grouped-single headers already present on the worksheet, run `全量下载`, and confirm the plugin reuses that existing grouped layout instead of flattening or rewriting the recognized headers.
-- Clear the worksheet header area, keep the grouped-single metadata in `ISDP_Setting`, then run `全量下载` and confirm regenerated headers fall back to flat child-only single headers without any grouped parent header row for that `single` field.
+- Edit `ISDP_Setting` so `HeaderStartRow = 3`, `HeaderRowCount = 2`, and `DataStartRow = 6`, then run the hidden full-download path and confirm headers/data are written at the configured rows.
+- On a sheet that already has recognizable headers, run the hidden full-download path and confirm the plugin refreshes data cells without rewriting those existing headers.
+- Modify `Excel L1` or `Excel L2` in `SheetFieldMappings`, update the matching Excel header text manually, then run `部分下载` / `Partial download` or `部分上传` / `Partial upload` and confirm the column still resolves by current header text.
+- Set one `single` mapping row to use both `Excel L1` and `Excel L2`, keep `HeaderRowCount = 2`, prepare matching grouped headers on the sheet, then run `部分下载` / `Partial download` and confirm the grouped-single column resolves and only the selected child cells are refreshed.
+- Using the same grouped-single metadata and visible grouped headers, edit a grouped-single cell and run `部分上传` / `Partial upload`, then confirm the upload resolves that `single` field correctly and does not require converting it to a non-`single` field type.
+- Keep the grouped-single headers already present on the worksheet, run the hidden full-download path, and confirm the plugin reuses that existing grouped layout instead of flattening or rewriting the recognized headers.
+- Clear the worksheet header area, keep the grouped-single metadata in `ISDP_Setting`, then run the hidden full-download path and confirm regenerated headers fall back to flat child-only single headers without any grouped parent header row for that `single` field.
 - Verify the task pane button and login button still work after the Ribbon Sync controls are added.

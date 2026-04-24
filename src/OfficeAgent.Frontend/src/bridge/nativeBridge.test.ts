@@ -127,7 +127,7 @@ describe('NativeBridge', () => {
     });
 
     await expect(bridge.getHostContext()).resolves.toEqual({
-      resolvedUiLocale: 'en',
+      resolvedUiLocale: 'zh',
       uiLanguageOverride: 'zh',
     });
 
@@ -162,7 +162,7 @@ describe('NativeBridge', () => {
     });
   });
 
-  it('keeps browser preview host context English unless the saved override changes', async () => {
+  it('resolves browser preview host context from the saved override', async () => {
     const bridge = new NativeBridge(undefined);
 
     await expect(bridge.getHostContext()).resolves.toEqual({
@@ -177,12 +177,174 @@ describe('NativeBridge', () => {
       model: 'gpt-5-mini',
       ssoUrl: '',
       ssoLoginSuccessPath: '',
-      uiLanguageOverride: 'en',
+      uiLanguageOverride: 'zh',
     });
 
     await expect(bridge.getHostContext()).resolves.toEqual({
-      resolvedUiLocale: 'en',
-      uiLanguageOverride: 'en',
+      resolvedUiLocale: 'zh',
+      uiLanguageOverride: 'zh',
+    });
+  });
+
+  it('localizes browser preview confirmation payloads when the saved override is zh', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await bridge.saveSettings({
+      apiKey: '',
+      baseUrl: 'https://api.example.com',
+      businessBaseUrl: '',
+      model: 'gpt-5-mini',
+      ssoUrl: '',
+      ssoLoginSuccessPath: '',
+      uiLanguageOverride: 'zh',
+    });
+
+    await expect(bridge.executeExcelCommand({
+      commandType: 'excel.renameWorksheet',
+      sheetName: 'Sheet1',
+      newSheetName: 'Summary',
+      confirmed: false,
+    })).resolves.toEqual({
+      commandType: 'excel.renameWorksheet',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: '确认此 Excel 操作后再修改工作簿。',
+      preview: {
+        title: '重命名工作表',
+        summary: '将工作表“Sheet1”重命名为“Summary”',
+        details: ['工作簿：Browser Preview.xlsx'],
+      },
+      selectionContext: {
+        hasSelection: true,
+        workbookName: 'Browser Preview.xlsx',
+        sheetName: 'Sheet1',
+        address: 'A1:C4',
+        rowCount: 4,
+        columnCount: 3,
+        isContiguous: true,
+        headerPreview: ['Name', 'Region', 'Amount'],
+        sampleRows: [
+          ['Project A', 'CN', '42'],
+          ['Project B', 'US', '36'],
+        ],
+        warningMessage: null,
+      },
+    });
+
+    await expect(bridge.runSkill({
+      userInput: uploadToProjectA,
+      confirmed: false,
+    })).resolves.toEqual({
+      route: 'skill',
+      skillName: 'upload_data',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: `请先确认发往${projectA}的上传内容。`,
+      preview: {
+        title: '上传所选数据',
+        summary: `上传 2 行数据到 ${projectA}`,
+        details: [
+          '来源：Sheet1!A1:C3',
+          '字段：Name, Region',
+        ],
+      },
+      uploadPreview: {
+        projectName: projectA,
+        sheetName: 'Sheet1',
+        address: 'A1:C3',
+        headers: ['Name', 'Region'],
+        rows: [
+          ['Project A', 'CN'],
+          ['Project B', 'US'],
+        ],
+        records: [
+          { Name: 'Project A', Region: 'CN' },
+          { Name: 'Project B', Region: 'US' },
+        ],
+      },
+    });
+  });
+
+  it('localizes browser preview planner messages when the saved override is zh', async () => {
+    const bridge = new NativeBridge(undefined);
+
+    await bridge.saveSettings({
+      apiKey: '',
+      baseUrl: 'https://api.example.com',
+      businessBaseUrl: '',
+      model: 'gpt-5-mini',
+      ssoUrl: '',
+      ssoLoginSuccessPath: '',
+      uiLanguageOverride: 'zh',
+    });
+
+    const previewResult = await bridge.runAgent({
+      userInput: 'Create a summary sheet from the current selection',
+      confirmed: false,
+    });
+
+    expect(previewResult).toEqual({
+      route: 'plan',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: '我已经准备好执行计划，请确认后再修改 Excel。',
+      planner: {
+        mode: 'plan',
+        assistantMessage: '我已经准备好执行计划，请确认后再修改 Excel。',
+        plan: {
+          summary: '创建 Summary 工作表并写入当前选中数据。',
+          steps: [
+            {
+              type: 'excel.addWorksheet',
+              args: {
+                newSheetName: 'Summary',
+              },
+            },
+            {
+              type: 'excel.writeRange',
+              args: {
+                targetAddress: 'Summary!A1:B3',
+                values: [
+                  ['Name', 'Region'],
+                  ['Project A', 'CN'],
+                  ['Project B', 'US'],
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(bridge.runAgent({
+      userInput: 'Create a summary sheet from the current selection',
+      confirmed: true,
+      plan: previewResult.planner?.plan,
+    })).resolves.toEqual({
+      route: 'plan',
+      requiresConfirmation: false,
+      status: 'completed',
+      message: '计划执行成功。',
+      journal: {
+        hasFailures: false,
+        errorMessage: '',
+        steps: [
+          {
+            type: 'excel.addWorksheet',
+            title: '新增工作表 Summary',
+            status: 'completed',
+            message: '计划执行成功。',
+            errorMessage: '',
+          },
+          {
+            type: 'excel.writeRange',
+            title: '写入范围 Summary!A1:B3',
+            status: 'completed',
+            message: '计划执行成功。',
+            errorMessage: '',
+          },
+        ],
+      },
     });
   });
 

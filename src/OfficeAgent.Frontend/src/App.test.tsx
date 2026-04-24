@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
@@ -143,6 +143,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.useRealTimers();
   selectionContextListener = null;
   if (originalScrollTo) {
     Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
@@ -165,6 +166,17 @@ describe('App shell', () => {
     expect(screen.getByRole('button', { name: /打开设置/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /发送/i })).toBeInTheDocument();
     expect(document.documentElement.lang).toBe('zh');
+  });
+
+  it('falls back to English fixed UI when getHostContext fails', async () => {
+    mockedBridge.getHostContext.mockRejectedValueOnce(new Error('host context unavailable'));
+
+    render(<App />);
+
+    expect(await screen.findByText(/welcome to isdp/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open settings/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /send/i })).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe('en');
   });
 
   it('renders the expected task pane regions', async () => {
@@ -227,20 +239,23 @@ describe('App shell', () => {
     const settingsDialog = screen.getByRole('dialog', { name: /设置对话框/i });
     expect(settingsDialog).toBeInTheDocument();
     expect(
-      within(settingsDialog).getAllByLabelText(/^api key$/i)[0],
+      within(settingsDialog).getAllByLabelText(/api 密钥/i)[0],
     ).toHaveValue('');
     expect(
-      within(settingsDialog).getByRole('textbox', { name: /^base url$/i }),
+      within(settingsDialog).getByRole('textbox', { name: /^基础 url$/i }),
     ).toHaveValue('https://api.example.com');
     expect(
-      within(settingsDialog).getByRole('textbox', { name: /^business base url$/i }),
+      within(settingsDialog).getByRole('textbox', { name: /^业务基础 url$/i }),
     ).toHaveValue('https://business.example.com');
     expect(
       within(settingsDialog).getByText(/已连接 browser-preview \(dev\)/i),
     ).toBeInTheDocument();
     expect(
-      within(settingsDialog).getByRole('textbox', { name: /model/i }),
+      within(settingsDialog).getByRole('textbox', { name: /^模型$/i }),
     ).toHaveValue('gpt-5-mini');
+    expect(
+      within(settingsDialog).getByRole('textbox', { name: /^sso 地址$/i }),
+    ).toHaveValue('');
   });
 
   it('renders English fixed UI when the host locale resolves to English', async () => {
@@ -261,9 +276,62 @@ describe('App shell', () => {
 
     await user.click(screen.getByRole('button', { name: /open settings/i }));
 
-    expect(screen.getByRole('dialog', { name: /settings dialog/i })).toBeInTheDocument();
+    const settingsDialog = screen.getByRole('dialog', { name: /settings dialog/i });
+    expect(settingsDialog).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument();
+    expect(within(settingsDialog).getAllByLabelText(/^(api key|api 密钥)$/i)[0]).toHaveValue('');
+    expect(within(settingsDialog).getByRole('textbox', { name: /^(base url|基础 url)$/i })).toHaveValue('https://api.example.com');
+    expect(within(settingsDialog).getByRole('textbox', { name: /^(business base url|业务基础 url)$/i })).toHaveValue('https://business.example.com');
+    expect(within(settingsDialog).getByRole('textbox', { name: /^(model|模型)$/i })).toHaveValue('gpt-5-mini');
+    expect(within(settingsDialog).getByRole('textbox', { name: /^(sso url|sso 地址)$/i })).toHaveValue('');
+  });
+
+  it('keeps preview messages and confirmation cards in English when the host locale resolves to English', async () => {
+    const user = userEvent.setup();
+    mockedBridge.getHostContext.mockResolvedValueOnce({
+      resolvedUiLocale: 'en',
+      uiLanguageOverride: 'system',
+    });
+    mockedBridge.runSkill.mockResolvedValueOnce({
+      route: 'skill',
+      skillName: 'upload_data',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: 'Review the upload payload before sending it to Project A.',
+      preview: {
+        title: 'Upload selected data',
+        summary: 'Upload 2 row(s) to Project A',
+        details: ['Source: Sheet1!A1:C3', 'Fields: Name, Region'],
+      },
+      uploadPreview: {
+        projectName: 'Project A',
+        sheetName: 'Sheet1',
+        address: 'A1:C3',
+        headers: ['Name', 'Region'],
+        rows: [
+          ['Project A', 'CN'],
+          ['Project B', 'US'],
+        ],
+        records: [
+          { Name: 'Project A', Region: 'CN' },
+          { Name: 'Project B', Region: 'US' },
+        ],
+      },
+    });
+
+    render(<App />);
+
+    await user.type(screen.getByRole('textbox', { name: /message composer/i }), 'upload selected data to Project A');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+
+    const confirmationCard = await screen.findByRole('article', { name: /confirm excel action/i });
+    expect(await screen.findByText(/review the upload payload before sending it to project a/i)).toBeInTheDocument();
+    expect(confirmationCard).toBeInTheDocument();
+    expect(within(confirmationCard).getByText(/^upload selected data$/i)).toBeInTheDocument();
+    expect(within(confirmationCard).getByText(/upload 2 row\(s\) to project a/i)).toBeInTheDocument();
+    expect(within(confirmationCard).getByText(/source: sheet1!a1:c3/i)).toBeInTheDocument();
+    expect(within(confirmationCard).getByText(/fields: name, region/i)).toBeInTheDocument();
   });
 
   it('keeps an explicitly chosen legacy placeholder title after reload when persisted ownership is false', async () => {
@@ -384,8 +452,8 @@ describe('App shell', () => {
     render(<App />);
 
     await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
-    await user.clear(screen.getByRole('textbox', { name: /^business base url$/i }));
-    await user.type(screen.getByRole('textbox', { name: /^business base url$/i }), 'http://localhost:3200');
+    await user.clear(screen.getByRole('textbox', { name: /^(business base url|业务基础 url)$/i }));
+    await user.type(screen.getByRole('textbox', { name: /^(business base url|业务基础 url)$/i }), 'http://localhost:3200');
     await user.click(screen.getByRole('button', { name: /保存|save/i }));
 
     expect(mockedBridge.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
@@ -418,23 +486,66 @@ describe('App shell', () => {
     render(<App />);
 
     await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
-    await user.clear(screen.getByRole('textbox', { name: /^base url$/i }));
-    await user.type(screen.getByRole('textbox', { name: /^base url$/i }), 'https://changed.example.com');
+    await user.clear(screen.getByRole('textbox', { name: /^(base url|基础 url)$/i }));
+    await user.type(screen.getByRole('textbox', { name: /^(base url|基础 url)$/i }), 'https://changed.example.com');
     await user.click(screen.getByRole('button', { name: /取消|cancel/i }));
 
     await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
     expect(
-      screen.getByRole('textbox', { name: /^base url$/i }),
+      screen.getByRole('textbox', { name: /^(base url|基础 url)$/i }),
     ).toHaveValue('https://api.example.com');
 
-    await user.clear(screen.getByRole('textbox', { name: /^base url$/i }));
-    await user.type(screen.getByRole('textbox', { name: /^base url$/i }), 'https://closed.example.com');
+    await user.clear(screen.getByRole('textbox', { name: /^(base url|基础 url)$/i }));
+    await user.type(screen.getByRole('textbox', { name: /^(base url|基础 url)$/i }), 'https://closed.example.com');
     await user.click(screen.getByRole('button', { name: /关闭|close/i }));
 
     await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
     expect(
-      screen.getByRole('textbox', { name: /^base url$/i }),
+      screen.getByRole('textbox', { name: /^(base url|基础 url)$/i }),
     ).toHaveValue('https://api.example.com');
+  });
+
+  it('does not block settings save when the follow-up host-context refresh never resolves', async () => {
+    const user = userEvent.setup();
+    const pendingHostContext = createDeferred<{ resolvedUiLocale: 'zh' | 'en'; uiLanguageOverride: 'system' | 'zh' | 'en' }>();
+
+    mockedBridge.getHostContext
+      .mockResolvedValueOnce({
+        resolvedUiLocale: 'zh',
+        uiLanguageOverride: 'system',
+      })
+      .mockReturnValueOnce(pendingHostContext.promise);
+
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: /打开设置/i }));
+    await user.click(screen.getByRole('button', { name: /保存/i }));
+
+    expect(screen.queryByRole('dialog', { name: /设置对话框/i })).not.toBeInTheDocument();
+  });
+
+  it('applies a late host locale after the startup timeout fallback already rendered English UI', async () => {
+    vi.useFakeTimers();
+    const pendingHostContext = createDeferred<{ resolvedUiLocale: 'zh' | 'en'; uiLanguageOverride: 'system' | 'zh' | 'en' }>();
+    mockedBridge.getHostContext.mockReturnValueOnce(pendingHostContext.promise);
+
+    render(<App />);
+
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(screen.getByText(/welcome to isdp/i)).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe('en');
+
+    await act(async () => {
+      pendingHostContext.resolve({
+        resolvedUiLocale: 'zh',
+        uiLanguageOverride: 'system',
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/欢迎使用\s*ISDP/)).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe('zh');
   });
 
   it('shows an inline error when saving settings fails', async () => {
@@ -470,7 +581,7 @@ describe('App shell', () => {
     render(<App />);
 
     await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
-    const baseUrlInput = screen.getByRole('textbox', { name: /^base url$/i });
+    const baseUrlInput = screen.getByRole('textbox', { name: /^(base url|基础 url)$/i });
     await user.clear(baseUrlInput);
     await user.type(baseUrlInput, 'https://draft.example.com');
 
@@ -497,7 +608,7 @@ describe('App shell', () => {
     await user.click(settingsButton);
 
     const dialog = screen.getByRole('dialog', { name: /设置对话框|settings dialog/i });
-    const apiKeyInput = within(dialog).getAllByLabelText(/^api key$/i)[0];
+    const apiKeyInput = within(dialog).getAllByLabelText(/^(api key|api 密钥)$/i)[0];
 
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     expect(apiKeyInput).toHaveFocus();
@@ -573,10 +684,10 @@ describe('App shell', () => {
     await user.click(screen.getByRole('button', { name: /打开设置|open settings/i }));
     await user.click(screen.getByRole('button', { name: /保存|save/i }));
 
-    expect(screen.getAllByLabelText(/^api key$/i)[0]).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: /^base url$/i })).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: /^business base url$/i })).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: /model/i })).toBeDisabled();
+    expect(screen.getAllByLabelText(/^(api key|api 密钥)$/i)[0]).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: /^(base url|基础 url)$/i })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: /^(business base url|业务基础 url)$/i })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: /^(model|模型)$/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /关闭|close/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /取消|cancel/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /保存|save/i })).toBeDisabled();
@@ -776,6 +887,7 @@ describe('App shell', () => {
     expect(
       await screen.findByText(/create a summary sheet and write the selected rows/i),
     ).toBeInTheDocument();
+    expect(screen.getByText(/i prepared a plan\. review it before excel is changed/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /确认|confirm/i }));
 
@@ -795,8 +907,8 @@ describe('App shell', () => {
     expect(
       await screen.findByText(/plan executed successfully/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/completed · add worksheet summary/i)).toBeInTheDocument();
-    expect(screen.getByText(/completed · write range summary!a1:b3/i)).toBeInTheDocument();
+    expect(screen.getByText(/已完成 · add worksheet summary/i)).toBeInTheDocument();
+    expect(screen.getByText(/已完成 · write range summary!a1:b3/i)).toBeInTheDocument();
   });
 
   it('queues write commands for confirmation before executing them', async () => {
@@ -828,7 +940,8 @@ describe('App shell', () => {
     expect(
       await screen.findByText(/确认 Excel 操作|confirm excel action/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/add worksheet "summary"/i)).toBeInTheDocument();
+    expect(screen.getByText(/确认此 excel 操作后再修改工作簿/i)).toBeInTheDocument();
+    expect(screen.getByText(/新增工作表.*summary/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /确认|confirm/i }));
 
@@ -845,6 +958,33 @@ describe('App shell', () => {
     expect(
       await screen.findByText(/worksheet "summary" created/i),
     ).toBeInTheDocument();
+  });
+
+  it('preserves extra host Excel preview details while localizing the confirmation card', async () => {
+    const user = userEvent.setup();
+    mockedBridge.executeExcelCommand.mockResolvedValueOnce({
+      commandType: 'excel.addWorksheet',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: 'Confirm worksheet creation before Excel is modified.',
+      preview: {
+        title: 'Add worksheet',
+        summary: 'Add worksheet "Summary"',
+        details: [
+          'Workbook: Quarterly Report.xlsx',
+          'This action also updates formulas in the workbook.',
+        ],
+      },
+    });
+
+    render(<App />);
+
+    await user.type(screen.getByRole('textbox', { name: /消息输入框|message composer/i }), 'add sheet Summary');
+    await user.click(screen.getByRole('button', { name: /发送|send/i }));
+
+    const confirmationCard = await screen.findByRole('article', { name: /确认 Excel 操作|confirm excel action/i });
+    expect(within(confirmationCard).getByText(/工作簿：quarterly report\.xlsx/i)).toBeInTheDocument();
+    expect(within(confirmationCard).getByText(/this action also updates formulas in the workbook/i)).toBeInTheDocument();
   });
 
   it('disables the composer while a confirmation card is pending', async () => {
@@ -984,9 +1124,13 @@ describe('App shell', () => {
       userInput: '把选中数据上传到项目A',
       confirmed: false,
     });
+    expect(screen.getByText(/请先确认发往项目a的上传内容/i)).toBeInTheDocument();
     expect(
-      await screen.findByText(/upload 2 row\(s\) to 项目a/i),
+      await screen.findByText(/上传 2 行数据到 项目a/i),
     ).toBeInTheDocument();
+    expect(screen.getByText(/上传所选数据/i)).toBeInTheDocument();
+    expect(screen.getByText(/来源：sheet1!a1:c3/i)).toBeInTheDocument();
+    expect(screen.getByText(/字段：name, region/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /确认|confirm/i }));
 
@@ -999,6 +1143,50 @@ describe('App shell', () => {
     expect(
       await screen.findByText(/uploaded 2 row\(s\) to 项目a/i),
     ).toBeInTheDocument();
+  });
+
+  it('preserves extra host upload preview details while localizing the confirmation card', async () => {
+    const user = userEvent.setup();
+    mockedBridge.runSkill.mockResolvedValueOnce({
+      route: 'skill',
+      skillName: 'upload_data',
+      requiresConfirmation: true,
+      status: 'preview',
+      message: 'Review the upload payload before sending it to 项目A.',
+      preview: {
+        title: 'Upload selected data',
+        summary: 'Upload 2 row(s) to 项目A',
+        details: [
+          'Source: Sheet1!A1:C3',
+          'Fields: Name, Region',
+          'Rows with blank IDs will be skipped.',
+        ],
+      },
+      uploadPreview: {
+        projectName: '项目A',
+        sheetName: 'Sheet1',
+        address: 'A1:C3',
+        headers: ['Name', 'Region'],
+        rows: [
+          ['Project A', 'CN'],
+          ['Project B', 'US'],
+        ],
+        records: [
+          { Name: 'Project A', Region: 'CN' },
+          { Name: 'Project B', Region: 'US' },
+        ],
+      },
+    });
+
+    render(<App />);
+
+    await user.type(screen.getByRole('textbox', { name: /消息输入框|message composer/i }), '把选中数据上传到项目A');
+    await user.click(screen.getByRole('button', { name: /发送|send/i }));
+
+    const confirmationCard = await screen.findByRole('article', { name: /确认 Excel 操作|confirm excel action/i });
+    expect(within(confirmationCard).getByText(/来源：sheet1!a1:c3/i)).toBeInTheDocument();
+    expect(within(confirmationCard).getByText(/字段：name, region/i)).toBeInTheDocument();
+    expect(within(confirmationCard).getByText(/rows with blank ids will be skipped/i)).toBeInTheDocument();
   });
 
   it('auto-scrolls the message thread when messages change', async () => {

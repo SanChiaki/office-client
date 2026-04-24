@@ -22,6 +22,7 @@
   WebViewHostLike,
   WebViewMessageEventLike,
 } from '../types/bridge';
+import { getUiStrings } from '../i18n/uiStrings';
 
 const BRIDGE_TYPES = {
   ping: 'bridge.ping',
@@ -208,6 +209,9 @@ export class NativeBridge {
 
   private invoke<TPayload, TResult>(type: string, payload?: TPayload): Promise<TResult> {
     if (!this.webView) {
+      const previewLocale = resolveBrowserPreviewLocale(this.browserPreviewSettings.uiLanguageOverride);
+      const previewStrings = getUiStrings(previewLocale);
+
       if (type === BRIDGE_TYPES.ping) {
         return Promise.resolve(BROWSER_PREVIEW_PING as TResult);
       }
@@ -218,7 +222,7 @@ export class NativeBridge {
 
       if (type === BRIDGE_TYPES.getHostContext) {
         return Promise.resolve({
-          resolvedUiLocale: 'en',
+          resolvedUiLocale: previewLocale,
           uiLanguageOverride: this.browserPreviewSettings.uiLanguageOverride ?? 'system',
         } as TResult);
       }
@@ -263,7 +267,12 @@ export class NativeBridge {
 
       if (type === BRIDGE_TYPES.executeExcelCommand) {
         try {
-          return Promise.resolve(createBrowserPreviewCommandResult(validateBrowserPreviewCommand(payload as ExcelCommand)) as TResult);
+          return Promise.resolve(
+            createBrowserPreviewCommandResult(
+              validateBrowserPreviewCommand(payload as ExcelCommand),
+              previewLocale,
+            ) as TResult,
+          );
         } catch (error) {
           return Promise.reject(error);
         }
@@ -271,7 +280,12 @@ export class NativeBridge {
 
       if (type === BRIDGE_TYPES.runSkill) {
         try {
-          return Promise.resolve(createBrowserPreviewSkillResult(validateBrowserPreviewSkill(payload as SkillRequestEnvelope)) as TResult);
+          return Promise.resolve(
+            createBrowserPreviewSkillResult(
+              validateBrowserPreviewSkill(payload as SkillRequestEnvelope),
+              previewLocale,
+            ) as TResult,
+          );
         } catch (error) {
           return Promise.reject(error);
         }
@@ -279,7 +293,12 @@ export class NativeBridge {
 
       if (type === BRIDGE_TYPES.runAgent) {
         try {
-          return Promise.resolve(createBrowserPreviewAgentResult(validateBrowserPreviewAgent(payload as AgentRequestEnvelope)) as TResult);
+          return Promise.resolve(
+            createBrowserPreviewAgentResult(
+              validateBrowserPreviewAgent(payload as AgentRequestEnvelope),
+              previewLocale,
+            ) as TResult,
+          );
         } catch (error) {
           return Promise.reject(error);
         }
@@ -290,7 +309,7 @@ export class NativeBridge {
       }
 
       if (type === BRIDGE_TYPES.login) {
-        return Promise.resolve({ success: false, error: 'SSO login is only available inside the Excel task pane.' } as TResult);
+        return Promise.resolve({ success: false, error: previewStrings.browserPreviewLoginUnavailable } as TResult);
       }
 
       if (type === BRIDGE_TYPES.logout) {
@@ -372,14 +391,20 @@ function isValidUiLanguageOverride(value: unknown): value is NonNullable<AppSett
   return value === 'system' || value === 'zh' || value === 'en';
 }
 
-function createBrowserPreviewCommandResult(command: ExcelCommand): ExcelCommandResult {
+function resolveBrowserPreviewLocale(uiLanguageOverride: AppSettings['uiLanguageOverride']): HostContext['resolvedUiLocale'] {
+  return uiLanguageOverride === 'zh' ? 'zh' : 'en';
+}
+
+function createBrowserPreviewCommandResult(command: ExcelCommand, locale: HostContext['resolvedUiLocale']): ExcelCommandResult {
+  const strings = getUiStrings(locale);
+
   switch (command.commandType) {
     case 'excel.readSelectionTable':
       return {
         commandType: command.commandType,
         requiresConfirmation: false,
         status: 'completed',
-        message: 'Read selection from Sheet1 A1:C4.',
+        message: strings.browserPreviewReadSelectionMessage('Sheet1', 'A1:C4'),
         table: {
           sheetName: 'Sheet1',
           address: 'A1:C4',
@@ -392,40 +417,54 @@ function createBrowserPreviewCommandResult(command: ExcelCommand): ExcelCommandR
         selectionContext: BROWSER_PREVIEW_SELECTION_CONTEXT,
       };
     case 'excel.addWorksheet':
-      return createBrowserPreviewWriteResult(command, {
-        previewTitle: 'Add worksheet',
-        previewSummary: `Add worksheet "${command.newSheetName ?? 'New Sheet'}"`,
-        completedMessage: `Worksheet "${command.newSheetName ?? 'New Sheet'}" created.`,
+      return createBrowserPreviewWriteResult(command, locale, {
+        previewTitle: strings.excelAddWorksheetPreviewTitle,
+        previewSummary: strings.formatExcelAddWorksheetPreviewSummary(command.newSheetName ?? 'New Sheet'),
+        completedMessage: strings.browserPreviewWorksheetCreatedMessage(command.newSheetName ?? 'New Sheet'),
       });
     case 'excel.renameWorksheet':
-      return createBrowserPreviewWriteResult(command, {
-        previewTitle: 'Rename worksheet',
-        previewSummary: `Rename worksheet "${command.sheetName ?? 'Sheet1'}" to "${command.newSheetName ?? 'Renamed Sheet'}"`,
-        completedMessage: `Worksheet "${command.sheetName ?? 'Sheet1'}" renamed to "${command.newSheetName ?? 'Renamed Sheet'}".`,
+      return createBrowserPreviewWriteResult(command, locale, {
+        previewTitle: strings.excelRenameWorksheetPreviewTitle,
+        previewSummary: strings.formatExcelRenameWorksheetPreviewSummary(
+          command.sheetName ?? 'Sheet1',
+          command.newSheetName ?? 'Renamed Sheet',
+        ),
+        completedMessage: strings.browserPreviewWorksheetRenamedMessage(
+          command.sheetName ?? 'Sheet1',
+          command.newSheetName ?? 'Renamed Sheet',
+        ),
       });
     case 'excel.deleteWorksheet':
-      return createBrowserPreviewWriteResult(command, {
-        previewTitle: 'Delete worksheet',
-        previewSummary: `Delete worksheet "${command.sheetName ?? 'Sheet1'}"`,
-        completedMessage: `Worksheet "${command.sheetName ?? 'Sheet1'}" deleted.`,
+      return createBrowserPreviewWriteResult(command, locale, {
+        previewTitle: strings.excelDeleteWorksheetPreviewTitle,
+        previewSummary: strings.formatExcelDeleteWorksheetPreviewSummary(command.sheetName ?? 'Sheet1'),
+        completedMessage: strings.browserPreviewWorksheetDeletedMessage(command.sheetName ?? 'Sheet1'),
       });
     case 'excel.writeRange':
-      return createBrowserPreviewWriteResult(command, {
-        previewTitle: 'Write range',
-        previewSummary: `Write ${(command.values ?? []).length} row(s) to ${command.targetAddress ?? 'A1'}`,
-        completedMessage: `Wrote ${(command.values ?? []).length} row(s) to ${command.targetAddress ?? 'A1'}.`,
+      return createBrowserPreviewWriteResult(command, locale, {
+        previewTitle: strings.excelWriteRangePreviewTitle,
+        previewSummary: strings.formatExcelWriteRangePreviewSummary(
+          (command.values ?? []).length,
+          (command.values ?? [])[0]?.length ?? 0,
+          command.targetAddress ?? 'A1',
+        ),
+        completedMessage: strings.browserPreviewWriteRangeCompletedMessage(
+          (command.values ?? []).length,
+          command.targetAddress ?? 'A1',
+        ),
         details: (command.values ?? []).slice(0, 3).map((row) => row.join(' | ')),
       });
     default:
       throw new NativeBridgeError({
         code: 'bridge_unavailable',
-        message: `Browser preview does not support ${command.commandType}.`,
+        message: strings.browserPreviewUnsupportedCommandMessage(command.commandType),
       });
   }
 }
 
 function createBrowserPreviewWriteResult(
   command: ExcelCommand,
+  locale: HostContext['resolvedUiLocale'],
   options: {
     previewTitle: string;
     previewSummary: string;
@@ -433,16 +472,18 @@ function createBrowserPreviewWriteResult(
     details?: string[];
   },
 ): ExcelCommandResult {
+  const strings = getUiStrings(locale);
+
   if (!command.confirmed) {
     return {
       commandType: command.commandType,
       requiresConfirmation: true,
       status: 'preview',
-      message: 'Confirm this Excel action before the workbook is modified.',
+      message: strings.browserPreviewExcelConfirmMessage,
       preview: {
         title: options.previewTitle,
         summary: options.previewSummary,
-        details: options.details ?? ['Workbook: Browser Preview.xlsx'],
+        details: options.details ?? [strings.formatWorkbookDetail('Browser Preview.xlsx')],
       },
       selectionContext: BROWSER_PREVIEW_SELECTION_CONTEXT,
     };
@@ -621,23 +662,25 @@ function matchesUploadDataSkillInput(userInput: string): boolean {
   );
 }
 
-function createBrowserPreviewSkillResult(payload: SkillRequestEnvelope): SkillResult {
+function createBrowserPreviewSkillResult(payload: SkillRequestEnvelope, locale: HostContext['resolvedUiLocale']): SkillResult {
+  const strings = getUiStrings(locale);
+
   if (!isUploadDataSkillInput(payload.userInput)) {
     return {
       route: 'chat',
       requiresConfirmation: false,
       status: 'completed',
-      message: 'General chat routing is not implemented yet. Use /upload_data ... or a direct Excel command.',
+      message: strings.browserPreviewChatFallback,
     };
   }
 
   const uploadPreview = payload.uploadPreview ?? buildBrowserPreviewUpload(payload.userInput);
   const preview: ExcelCommandPreview = {
-    title: 'Upload selected data',
-    summary: `Upload ${uploadPreview.records.length} row(s) to ${uploadPreview.projectName}`,
+    title: strings.uploadPreviewTitle,
+    summary: strings.formatUploadPreviewSummary(uploadPreview.records.length, uploadPreview.projectName),
     details: [
-      `Source: ${uploadPreview.sheetName}!${uploadPreview.address}`,
-      `Fields: ${uploadPreview.headers.join(', ')}`,
+      strings.formatUploadPreviewSourceDetail(uploadPreview.sheetName, uploadPreview.address),
+      strings.formatUploadPreviewFieldsDetail(uploadPreview.headers),
     ],
   };
 
@@ -647,7 +690,7 @@ function createBrowserPreviewSkillResult(payload: SkillRequestEnvelope): SkillRe
       skillName: 'upload_data',
       requiresConfirmation: true,
       status: 'preview',
-      message: `Review the upload payload before sending it to ${uploadPreview.projectName}.`,
+      message: strings.browserPreviewUploadReviewMessage(uploadPreview.projectName),
       preview,
       uploadPreview,
     };
@@ -658,7 +701,7 @@ function createBrowserPreviewSkillResult(payload: SkillRequestEnvelope): SkillRe
     skillName: 'upload_data',
     requiresConfirmation: false,
     status: 'completed',
-    message: `Preview-only upload completed for ${uploadPreview.projectName} (${uploadPreview.records.length} row(s)).`,
+    message: strings.browserPreviewUploadCompletedMessage(uploadPreview.projectName, uploadPreview.records.length),
     preview,
     uploadPreview,
   };
@@ -685,21 +728,23 @@ function validateBrowserPreviewAgent(payload: AgentRequestEnvelope): AgentReques
   };
 }
 
-function createBrowserPreviewAgentResult(payload: AgentRequestEnvelope): AgentResult {
+function createBrowserPreviewAgentResult(payload: AgentRequestEnvelope, locale: HostContext['resolvedUiLocale']): AgentResult {
+  const strings = getUiStrings(locale);
+
   if (payload.confirmed && payload.plan) {
     return {
       route: 'plan',
       requiresConfirmation: false,
       status: 'completed',
-      message: 'Plan executed successfully.',
+      message: strings.browserPreviewPlanExecutedMessage,
       journal: {
         hasFailures: false,
         errorMessage: '',
         steps: payload.plan.steps.map((step) => ({
           type: step.type,
-          title: formatBrowserPreviewPlanStep(step),
+          title: formatBrowserPreviewPlanStep(step, locale),
           status: 'completed',
-          message: `Completed ${formatBrowserPreviewPlanStep(step)}.`,
+          message: strings.browserPreviewPlanExecutedMessage,
           errorMessage: '',
         })),
       },
@@ -711,11 +756,11 @@ function createBrowserPreviewAgentResult(payload: AgentRequestEnvelope): AgentRe
       route: 'plan',
       requiresConfirmation: true,
       status: 'preview',
-      message: 'I prepared a plan. Review it before Excel is changed.',
+      message: strings.browserPreviewPlanPreparedMessage,
       planner: {
         mode: 'plan',
-        assistantMessage: 'I prepared a plan. Review it before Excel is changed.',
-        plan: createBrowserPreviewPlan(),
+        assistantMessage: strings.browserPreviewPlanPreparedMessage,
+        plan: createBrowserPreviewPlan(locale),
       },
     };
   }
@@ -724,13 +769,15 @@ function createBrowserPreviewAgentResult(payload: AgentRequestEnvelope): AgentRe
     route: 'chat',
     requiresConfirmation: false,
     status: 'completed',
-    message: 'General chat routing is not implemented yet. Use /upload_data ... or a direct Excel command.',
+    message: strings.browserPreviewChatFallback,
   };
 }
 
-function createBrowserPreviewPlan(): AgentPlan {
+function createBrowserPreviewPlan(locale: HostContext['resolvedUiLocale']): AgentPlan {
+  const strings = getUiStrings(locale);
+
   return {
-    summary: 'Create a Summary sheet and write the selected rows.',
+    summary: strings.browserPreviewPlanSummary,
     steps: [
       {
         type: 'excel.addWorksheet',
@@ -753,18 +800,23 @@ function createBrowserPreviewPlan(): AgentPlan {
   };
 }
 
-function formatBrowserPreviewPlanStep(step: { type: string; args?: Record<string, unknown> }) {
+function formatBrowserPreviewPlanStep(step: { type: string; args?: Record<string, unknown> }, locale: HostContext['resolvedUiLocale']) {
+  const strings = getUiStrings(locale);
+
   switch (step.type) {
     case 'excel.addWorksheet':
-      return `Add worksheet ${String(step.args?.newSheetName ?? '').trim()}`.trim();
+      return strings.formatPlanStepAddWorksheet(String(step.args?.newSheetName ?? '').trim());
     case 'excel.writeRange':
-      return `Write range ${String(step.args?.targetAddress ?? '').trim()}`.trim();
+      return strings.formatPlanStepWriteRange(String(step.args?.targetAddress ?? '').trim());
     case 'excel.renameWorksheet':
-      return `Rename worksheet ${String(step.args?.sheetName ?? '').trim()} to ${String(step.args?.newSheetName ?? '').trim()}`.trim();
+      return strings.formatPlanStepRenameWorksheet(
+        String(step.args?.sheetName ?? '').trim(),
+        String(step.args?.newSheetName ?? '').trim(),
+      );
     case 'excel.deleteWorksheet':
-      return `Delete worksheet ${String(step.args?.sheetName ?? '').trim()}`.trim();
+      return strings.formatPlanStepDeleteWorksheet(String(step.args?.sheetName ?? '').trim());
     case 'skill.upload_data':
-      return 'Upload selected data';
+      return strings.formatPlanStepUploadData;
     default:
       return step.type;
   }
