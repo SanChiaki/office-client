@@ -19,6 +19,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Contains("TableLayoutPanel", dialogText, StringComparison.Ordinal);
             Assert.Contains("AutoSize = true", dialogText, StringComparison.Ordinal);
             Assert.Contains("MaximumSize = new Size(", dialogText, StringComparison.Ordinal);
+            Assert.Contains("HostLocalizedStrings", dialogText, StringComparison.Ordinal);
             Assert.DoesNotContain("Height = 48", dialogText, StringComparison.Ordinal);
         }
 
@@ -35,6 +36,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Contains("AutoSize = true", dialogText, StringComparison.Ordinal);
             Assert.Contains("MaximumSize = new Size(", dialogText, StringComparison.Ordinal);
             Assert.Contains("Padding = new Padding(16", dialogText, StringComparison.Ordinal);
+            Assert.Contains("HostLocalizedStrings", dialogText, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -49,6 +51,24 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Contains("TemplateOverwriteConfirmDialog.Confirm(", dialogServiceText, StringComparison.Ordinal);
             Assert.Contains("TemplateRevisionConflictDialog.ShowDecision(", dialogServiceText, StringComparison.Ordinal);
             Assert.DoesNotContain("MessageBox.Show(", dialogServiceText, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void TemplateConfirmationDialogsResolveCopyFromHostLocalizedStrings()
+        {
+            var overwriteDialogText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "Dialogs",
+                "TemplateOverwriteConfirmDialog.cs"));
+            var revisionConflictDialogText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "Dialogs",
+                "TemplateRevisionConflictDialog.cs"));
+
+            Assert.Contains("HostLocalizedStrings", overwriteDialogText, StringComparison.Ordinal);
+            Assert.Contains("HostLocalizedStrings", revisionConflictDialogText, StringComparison.Ordinal);
         }
 
         private static string ResolveRepositoryPath(params string[] segments)

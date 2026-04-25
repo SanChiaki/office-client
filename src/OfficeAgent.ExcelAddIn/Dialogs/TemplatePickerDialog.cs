@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using OfficeAgent.Core.Models;
+using OfficeAgent.ExcelAddIn.Localization;
 
 namespace OfficeAgent.ExcelAddIn.Dialogs
 {
@@ -13,7 +14,9 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
 
         public TemplatePickerDialog(string projectDisplayName, IReadOnlyList<TemplateDefinition> templates)
         {
-            Text = "应用模板";
+            var strings = Globals.ThisAddIn?.HostLocalizedStrings ?? HostLocalizedStrings.ForLocale("en");
+
+            Text = strings.TemplatePickerDialogTitle;
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MinimizeBox = false;
@@ -48,7 +51,7 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
                 AutoSize = true,
                 Margin = new Padding(0, 0, 0, 6),
                 MaximumSize = new Size(496, 0),
-                Text = $"当前项目：{projectDisplayName}",
+                Text = strings.TemplatePickerCurrentProjectText(projectDisplayName),
             };
 
             var instructionLabel = new Label
@@ -56,7 +59,7 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
                 AutoSize = true,
                 Margin = Padding.Empty,
                 MaximumSize = new Size(496, 0),
-                Text = "请选择要应用到当前表的本机模板。",
+                Text = strings.TemplatePickerInstructionText,
             };
 
             headerPanel.Controls.Add(projectLabel, 0, 0);
@@ -80,9 +83,9 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
                 templateListBox.SelectedIndex = 0;
             }
 
-            var okButton = new Button { Text = "确定", Width = 88, Height = 30 };
+            var okButton = new Button { Text = strings.OkButtonText, Width = 88, Height = 30 };
             okButton.Click += OkButton_Click;
-            var cancelButton = new Button { Text = "取消", Width = 88, Height = 30, DialogResult = DialogResult.Cancel };
+            var cancelButton = new Button { Text = strings.CancelButtonText, Width = 88, Height = 30, DialogResult = DialogResult.Cancel };
 
             var buttons = new FlowLayoutPanel
             {
@@ -110,7 +113,8 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
             var selected = templateListBox.SelectedItem as TemplateListItem;
             if (selected == null)
             {
-                OperationResultDialog.ShowWarning("请选择一个模板。");
+                var strings = Globals.ThisAddIn?.HostLocalizedStrings ?? HostLocalizedStrings.ForLocale("en");
+                OperationResultDialog.ShowWarning(strings.TemplatePickerSelectionRequiredMessage);
                 return;
             }
 

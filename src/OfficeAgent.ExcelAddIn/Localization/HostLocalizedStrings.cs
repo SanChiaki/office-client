@@ -29,6 +29,8 @@ namespace OfficeAgent.ExcelAddIn.Localization
 
         public string ProjectDropDownLoadFailedText => Locale == "zh" ? "项目加载失败" : "Failed to load projects";
 
+        public string ProjectSelectionRequiredMessage => Locale == "zh" ? "请先选择项目。" : "Select a project first.";
+
         public bool IsStickyProjectStatus(string text)
         {
             return string.Equals(text, ProjectDropDownLoginRequiredText, StringComparison.Ordinal) ||
@@ -45,6 +47,10 @@ namespace OfficeAgent.ExcelAddIn.Localization
         public string RibbonSaveTemplateButtonLabel => Locale == "zh" ? "保存模板" : "Save template";
 
         public string RibbonSaveAsTemplateButtonLabel => Locale == "zh" ? "另存模板" : "Save as template";
+
+        public string InitializeCurrentSheetCompletedMessage => Locale == "zh"
+            ? "初始化当前表完成。"
+            : "Initialize sheet completed.";
 
         public string RibbonDownloadGroupLabel => Locale == "zh" ? "下载" : "Download";
 
@@ -123,6 +129,13 @@ namespace OfficeAgent.ExcelAddIn.Localization
                 : $"Fields: {fieldCount}";
         }
 
+        public string SubmittedCellCountLine(int cellCount)
+        {
+            return Locale == "zh"
+                ? $"提交单元格数：{cellCount}"
+                : $"Submitted cells: {cellCount}";
+        }
+
         public string OverwriteDirtyCellsLine(int dirtyCount)
         {
             return Locale == "zh"
@@ -153,6 +166,154 @@ namespace OfficeAgent.ExcelAddIn.Localization
         public string ProjectLayoutDataStartValidationError => Locale == "zh"
             ? "DataStartRow 必须大于或等于 HeaderStartRow + HeaderRowCount。"
             : "DataStartRow must be greater than or equal to HeaderStartRow + HeaderRowCount.";
+
+        public string DefaultTemplateDisplayName => Locale == "zh" ? "未绑定模板" : "No template linked";
+
+        public string TemplatePickerDialogTitle => Locale == "zh" ? "应用模板" : "Apply template";
+
+        public string TemplatePickerCurrentProjectText(string projectDisplayName)
+        {
+            return Locale == "zh"
+                ? $"当前项目：{projectDisplayName}"
+                : $"Current project: {projectDisplayName}";
+        }
+
+        public string TemplatePickerInstructionText => Locale == "zh"
+            ? "请选择要应用到当前表的本机模板。"
+            : "Select a local template to apply to the current sheet.";
+
+        public string TemplatePickerSelectionRequiredMessage => Locale == "zh"
+            ? "请选择一个模板。"
+            : "Select a template.";
+
+        public string TemplateNoAvailableMessage => Locale == "zh"
+            ? "当前项目没有可用模板。"
+            : "No templates are available for the current project.";
+
+        public string TemplateNotFoundMessage => Locale == "zh"
+            ? "未找到所选模板。"
+            : "The selected template was not found.";
+
+        public string ApplyTemplateCompletedMessage(string templateName)
+        {
+            return Locale == "zh"
+                ? $"应用模板完成。\r\n模板：{templateName}"
+                : $"Apply template completed.\r\nTemplate: {templateName}";
+        }
+
+        public string TemplateNoSavableMessage => Locale == "zh"
+            ? "当前表没有可保存的模板。"
+            : "The current sheet has no template to save.";
+
+        public string SaveTemplateCompletedMessage(string templateName)
+        {
+            return Locale == "zh"
+                ? $"保存模板完成。\r\n模板：{templateName}"
+                : $"Save template completed.\r\nTemplate: {templateName}";
+        }
+
+        public string OverwriteTemplateCompletedMessage(string templateName)
+        {
+            return Locale == "zh"
+                ? $"覆盖模板完成。\r\n模板：{templateName}"
+                : $"Overwrite template completed.\r\nTemplate: {templateName}";
+        }
+
+        public string SuggestedNewTemplateName => Locale == "zh" ? "新模板" : "New template";
+
+        public string FormatSuggestedTemplateCopyName(string templateName)
+        {
+            if (string.IsNullOrWhiteSpace(templateName))
+            {
+                return SuggestedNewTemplateName;
+            }
+
+            return Locale == "zh"
+                ? templateName + "-副本"
+                : templateName + "-copy";
+        }
+
+        public string SaveAsTemplateCompletedMessage(string templateName)
+        {
+            return Locale == "zh"
+                ? $"另存模板完成。\r\n模板：{templateName}"
+                : $"Save as template completed.\r\nTemplate: {templateName}";
+        }
+
+        public string TemplateNameDialogTitle => Locale == "zh" ? "另存模板" : "Save as template";
+
+        public string TemplateNameDialogPrompt => Locale == "zh"
+            ? "请输入新模板名称。保存后，当前表会绑定到新模板。"
+            : "Enter a new template name. After saving, the current sheet will be linked to the new template.";
+
+        public string TemplateNameRequiredMessage => Locale == "zh"
+            ? "模板名称不能为空。"
+            : "Template name cannot be empty.";
+
+        public string TemplateOverwriteConfirmTitle => Locale == "zh" ? "覆盖模板" : "Overwrite template";
+
+        public string TemplateOverwriteConfirmMessage(string templateName)
+        {
+            return Locale == "zh"
+                ? $"当前表存在未保存的模板改动，确认用模板“{templateName}”覆盖吗？"
+                : $"The current sheet has unsaved template changes. Overwrite it with template \"{templateName}\"?";
+        }
+
+        public string TemplateOverwriteButtonText => Locale == "zh" ? "覆盖" : "Overwrite";
+
+        public string TemplateRevisionConflictTitle => Locale == "zh" ? "模板版本冲突" : "Template revision conflict";
+
+        public string TemplateRevisionConflictMessage(string templateName, int sheetRevision, int storedRevision)
+        {
+            return Locale == "zh"
+                ? $"模板“{templateName}”已从版本 {sheetRevision} 更新到版本 {storedRevision}。\r\n请选择后续操作。"
+                : $"Template \"{templateName}\" changed from revision {sheetRevision} to {storedRevision}.\r\nChoose what to do next.";
+        }
+
+        public string TemplateSaveAsNewButtonText => Locale == "zh" ? "另存为新模板" : "Save as new template";
+
+        public string TemplateOverwriteOriginalButtonText => Locale == "zh" ? "覆盖原模板" : "Overwrite original template";
+
+        public string LocalizeSyncOperationName(string operationName)
+        {
+            switch ((operationName ?? string.Empty).Trim())
+            {
+                case "全量下载":
+                    return RibbonFullDownloadButtonLabel;
+                case "部分下载":
+                    return RibbonPartialDownloadButtonLabel;
+                case "全量上传":
+                    return RibbonFullUploadButtonLabel;
+                case "部分上传":
+                    return RibbonPartialUploadButtonLabel;
+                default:
+                    return operationName ?? string.Empty;
+            }
+        }
+
+        public string FormatDownloadCompletedMessage(string operationName, int rowCount, int fieldCount)
+        {
+            var localizedOperationName = LocalizeSyncOperationName(operationName);
+            return Locale == "zh"
+                ? $"{localizedOperationName}完成。\r\n{RowCountLine(rowCount)}\r\n{FieldCountLine(fieldCount)}"
+                : $"{localizedOperationName} completed.\r\n{RowCountLine(rowCount)}\r\n{FieldCountLine(fieldCount)}";
+        }
+
+        public string FormatUploadNoChangesMessage(string operationName)
+        {
+            var localizedOperationName = LocalizeSyncOperationName(operationName);
+            return Locale == "zh"
+                ? $"{localizedOperationName}没有可提交的单元格。"
+                : $"{localizedOperationName} has no cells to submit.";
+        }
+
+        public string FormatUploadCompletedMessage(string operationName, int submittedCellCount)
+        {
+            var localizedOperationName = LocalizeSyncOperationName(operationName);
+            return Locale == "zh"
+                ? $"{localizedOperationName}完成。\r\n{SubmittedCellCountLine(submittedCellCount)}"
+                : $"{localizedOperationName} completed.\r\n{SubmittedCellCountLine(submittedCellCount)}";
+        }
 
         public string TaskPaneRuntimeMissingMessage => Locale == "zh"
             ? "需要 WebView2 Runtime 才能显示 ISDP。"

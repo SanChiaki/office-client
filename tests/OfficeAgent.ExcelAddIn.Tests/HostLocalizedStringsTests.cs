@@ -71,6 +71,34 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Equal(expected, (bool)method.Invoke(null, new object[] { text }));
         }
 
+        [Theory]
+        [InlineData("zh", "全量下载", "全量下载", "全量下载完成。\r\n记录数：3\r\n字段数：4", "全量上传没有可提交的单元格。", "全量上传完成。\r\n提交单元格数：2")]
+        [InlineData("en", "全量下载", "Full download", "Full download completed.\r\nRows: 3\r\nFields: 4", "Full upload has no cells to submit.", "Full upload completed.\r\nSubmitted cells: 2")]
+        public void ForLocaleFormatsSyncOperationMessages(
+            string locale,
+            string operationName,
+            string expectedLocalizedOperationName,
+            string expectedDownloadCompletedMessage,
+            string expectedUploadNoChangesMessage,
+            string expectedUploadCompletedMessage)
+        {
+            var strings = CreateStrings(locale);
+            var localizeMethod = strings.GetType().GetMethod("LocalizeSyncOperationName", BindingFlags.Instance | BindingFlags.Public);
+            var downloadCompletedMethod = strings.GetType().GetMethod("FormatDownloadCompletedMessage", BindingFlags.Instance | BindingFlags.Public);
+            var uploadNoChangesMethod = strings.GetType().GetMethod("FormatUploadNoChangesMessage", BindingFlags.Instance | BindingFlags.Public);
+            var uploadCompletedMethod = strings.GetType().GetMethod("FormatUploadCompletedMessage", BindingFlags.Instance | BindingFlags.Public);
+
+            Assert.NotNull(localizeMethod);
+            Assert.NotNull(downloadCompletedMethod);
+            Assert.NotNull(uploadNoChangesMethod);
+            Assert.NotNull(uploadCompletedMethod);
+
+            Assert.Equal(expectedLocalizedOperationName, (string)localizeMethod.Invoke(strings, new object[] { operationName }));
+            Assert.Equal(expectedDownloadCompletedMessage, (string)downloadCompletedMethod.Invoke(strings, new object[] { operationName, 3, 4 }));
+            Assert.Equal(expectedUploadNoChangesMessage, (string)uploadNoChangesMethod.Invoke(strings, new object[] { "全量上传" }));
+            Assert.Equal(expectedUploadCompletedMessage, (string)uploadCompletedMethod.Invoke(strings, new object[] { "全量上传", 2 }));
+        }
+
         private static object CreateStrings(string locale)
         {
             var type = GetStringsType();

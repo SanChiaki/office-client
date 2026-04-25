@@ -4,13 +4,12 @@ using System.Windows.Forms;
 using OfficeAgent.Core.Models;
 using OfficeAgent.Core.Services;
 using OfficeAgent.ExcelAddIn.Dialogs;
+using OfficeAgent.ExcelAddIn.Localization;
 
 namespace OfficeAgent.ExcelAddIn
 {
     internal sealed class RibbonTemplateController
     {
-        private const string DefaultTemplateDisplayName = "未绑定模板";
-
         private readonly ITemplateCatalog templateCatalog;
         private readonly Func<string> activeSheetNameProvider;
         private readonly IRibbonTemplateDialogService dialogService;
@@ -32,7 +31,7 @@ namespace OfficeAgent.ExcelAddIn
             this.activeSheetNameProvider = activeSheetNameProvider ?? throw new ArgumentNullException(nameof(activeSheetNameProvider));
             this.dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
 
-            ActiveTemplateDisplayName = DefaultTemplateDisplayName;
+            ActiveTemplateDisplayName = GetStrings().DefaultTemplateDisplayName;
         }
 
         public event EventHandler TemplateStateChanged;
@@ -81,14 +80,14 @@ namespace OfficeAgent.ExcelAddIn
                 var state = templateCatalog.GetSheetState(sheetName) ?? new SheetTemplateState();
                 if (!state.CanApplyTemplate)
                 {
-                    dialogService.ShowWarning("请先选择项目。");
+                    dialogService.ShowWarning(GetStrings().ProjectSelectionRequiredMessage);
                     return;
                 }
 
                 var templates = templateCatalog.ListTemplates(sheetName) ?? Array.Empty<TemplateDefinition>();
                 if (templates.Count == 0)
                 {
-                    dialogService.ShowWarning("当前项目没有可用模板。");
+                    dialogService.ShowWarning(GetStrings().TemplateNoAvailableMessage);
                     return;
                 }
 
@@ -102,7 +101,7 @@ namespace OfficeAgent.ExcelAddIn
                     string.Equals(template.TemplateId, templateId, StringComparison.Ordinal));
                 if (selectedTemplate == null)
                 {
-                    dialogService.ShowWarning("未找到所选模板。");
+                    dialogService.ShowWarning(GetStrings().TemplateNotFoundMessage);
                     return;
                 }
 
@@ -114,7 +113,7 @@ namespace OfficeAgent.ExcelAddIn
                 templateCatalog.ApplyTemplateToSheet(sheetName, templateId);
                 InvalidateRefreshState();
                 RefreshActiveTemplateStateFromSheetMetadata();
-                dialogService.ShowInfo($"应用模板完成。\r\n模板：{selectedTemplate.TemplateName}");
+                dialogService.ShowInfo(GetStrings().ApplyTemplateCompletedMessage(selectedTemplate.TemplateName));
             }
             catch (Exception ex)
             {
@@ -130,11 +129,11 @@ namespace OfficeAgent.ExcelAddIn
                 var state = templateCatalog.GetSheetState(sheetName) ?? new SheetTemplateState();
                 if (!state.CanSaveTemplate || string.IsNullOrWhiteSpace(state.TemplateId) || !state.TemplateRevision.HasValue)
                 {
-                    dialogService.ShowWarning("当前表没有可保存的模板。");
+                    dialogService.ShowWarning(GetStrings().TemplateNoSavableMessage);
                     return;
                 }
 
-                if (TrySaveTemplate(sheetName, state, overwriteRevisionConflict: false, $"保存模板完成。\r\n模板：{state.TemplateName}"))
+                if (TrySaveTemplate(sheetName, state, overwriteRevisionConflict: false, GetStrings().SaveTemplateCompletedMessage(state.TemplateName)))
                 {
                     return;
                 }
@@ -146,7 +145,7 @@ namespace OfficeAgent.ExcelAddIn
 
                 if (conflictResult == DialogResult.Yes)
                 {
-                    TrySaveTemplate(sheetName, state, overwriteRevisionConflict: true, $"覆盖模板完成。\r\n模板：{state.TemplateName}");
+                    TrySaveTemplate(sheetName, state, overwriteRevisionConflict: true, GetStrings().OverwriteTemplateCompletedMessage(state.TemplateName));
                     return;
                 }
 
@@ -169,13 +168,11 @@ namespace OfficeAgent.ExcelAddIn
                 var state = templateCatalog.GetSheetState(sheetName) ?? new SheetTemplateState();
                 if (!state.CanSaveAsTemplate)
                 {
-                    dialogService.ShowWarning("请先选择项目。");
+                    dialogService.ShowWarning(GetStrings().ProjectSelectionRequiredMessage);
                     return;
                 }
 
-                var suggestedTemplateName = string.IsNullOrWhiteSpace(state.TemplateName)
-                    ? "新模板"
-                    : state.TemplateName + "-副本";
+                var suggestedTemplateName = GetStrings().FormatSuggestedTemplateCopyName(state.TemplateName);
                 var templateName = dialogService.ShowSaveAsTemplateDialog(suggestedTemplateName);
                 if (string.IsNullOrWhiteSpace(templateName))
                 {
@@ -185,7 +182,7 @@ namespace OfficeAgent.ExcelAddIn
                 templateCatalog.SaveSheetAsNewTemplate(sheetName, templateName);
                 InvalidateRefreshState();
                 RefreshActiveTemplateStateFromSheetMetadata();
-                dialogService.ShowInfo($"另存模板完成。\r\n模板：{templateName}");
+                dialogService.ShowInfo(GetStrings().SaveAsTemplateCompletedMessage(templateName));
             }
             catch (Exception ex)
             {
@@ -223,7 +220,7 @@ namespace OfficeAgent.ExcelAddIn
             CanSaveTemplate = state?.CanSaveTemplate == true;
             CanSaveAsTemplate = state?.CanSaveAsTemplate == true;
             ActiveTemplateDisplayName = string.IsNullOrWhiteSpace(state?.TemplateName)
-                ? DefaultTemplateDisplayName
+                ? GetStrings().DefaultTemplateDisplayName
                 : state.TemplateName;
             TemplateStateChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -248,6 +245,11 @@ namespace OfficeAgent.ExcelAddIn
 
             return string.Equals(message, "模板版本已变化。", StringComparison.Ordinal) ||
                    message.IndexOf("revision", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static HostLocalizedStrings GetStrings()
+        {
+            return Globals.ThisAddIn?.HostLocalizedStrings ?? HostLocalizedStrings.ForLocale("en");
         }
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using OfficeAgent.ExcelAddIn.Localization;
 
 namespace OfficeAgent.ExcelAddIn.Dialogs
 {
@@ -10,7 +11,9 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
 
         public TemplateNameDialog(string suggestedTemplateName)
         {
-            Text = "另存模板";
+            var strings = Globals.ThisAddIn?.HostLocalizedStrings ?? HostLocalizedStrings.ForLocale("en");
+
+            Text = strings.TemplateNameDialogTitle;
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MinimizeBox = false;
@@ -34,7 +37,7 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
                 AutoSize = true,
                 Margin = Padding.Empty,
                 MaximumSize = new Size(412, 0),
-                Text = "请输入新模板名称。保存后，当前表会绑定到新模板。",
+                Text = strings.TemplateNameDialogPrompt,
             };
 
             templateNameTextBox = new TextBox
@@ -44,9 +47,9 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
                 Text = suggestedTemplateName ?? string.Empty,
             };
 
-            var okButton = new Button { Text = "确定", Width = 88, Height = 30 };
+            var okButton = new Button { Text = strings.OkButtonText, Width = 88, Height = 30 };
             okButton.Click += OkButton_Click;
-            var cancelButton = new Button { Text = "取消", Width = 88, Height = 30, DialogResult = DialogResult.Cancel };
+            var cancelButton = new Button { Text = strings.CancelButtonText, Width = 88, Height = 30, DialogResult = DialogResult.Cancel };
 
             var buttons = new FlowLayoutPanel
             {
@@ -79,7 +82,8 @@ namespace OfficeAgent.ExcelAddIn.Dialogs
             var value = (templateNameTextBox.Text ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(value))
             {
-                OperationResultDialog.ShowWarning("模板名称不能为空。");
+                var strings = Globals.ThisAddIn?.HostLocalizedStrings ?? HostLocalizedStrings.ForLocale("en");
+                OperationResultDialog.ShowWarning(strings.TemplateNameRequiredMessage);
                 return;
             }
 

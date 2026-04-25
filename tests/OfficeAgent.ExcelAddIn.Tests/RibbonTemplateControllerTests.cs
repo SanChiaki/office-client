@@ -33,7 +33,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.True(ReadBoolProperty(controller, "CanApplyTemplate"));
             Assert.True(ReadBoolProperty(controller, "CanSaveAsTemplate"));
             Assert.False(ReadBoolProperty(controller, "CanSaveTemplate"));
-            Assert.Equal("未绑定模板", ReadStringProperty(controller, "ActiveTemplateDisplayName"));
+            Assert.Equal("No template linked", ReadStringProperty(controller, "ActiveTemplateDisplayName"));
         }
 
         [Fact]
@@ -60,7 +60,28 @@ namespace OfficeAgent.ExcelAddIn.Tests
             InvokeExecuteApplyTemplate(controller);
 
             Assert.Equal("tpl-performance-a", catalog.LastAppliedTemplateId);
-            Assert.Contains(dialogs.InfoMessages, message => message.IndexOf("条件A", StringComparison.Ordinal) >= 0);
+            Assert.Contains(dialogs.InfoMessages, message =>
+                message.IndexOf("Apply template completed.", StringComparison.Ordinal) >= 0 &&
+                message.IndexOf("条件A", StringComparison.Ordinal) >= 0);
+        }
+
+        [Fact]
+        public void ExecuteApplyTemplateShowsEnglishWarningWhenCurrentProjectHasNoTemplates()
+        {
+            var catalog = new FakeTemplateCatalog();
+            catalog.StateBySheet["Sheet1"] = new SheetTemplateState
+            {
+                HasProjectBinding = true,
+                CanApplyTemplate = true,
+                CanSaveAsTemplate = true,
+                ProjectDisplayName = "Performance",
+            };
+            var dialogs = new FakeTemplateDialogService();
+            var controller = CreateController(catalog, dialogs, () => "Sheet1");
+
+            InvokeExecuteApplyTemplate(controller);
+
+            Assert.Contains("No templates are available for the current project.", dialogs.WarningMessages);
         }
 
         [Fact]
@@ -122,7 +143,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Equal(2, catalog.SaveExistingCalls.Count);
             Assert.Equal(("Sheet1", "tpl-performance-a", 2, false), catalog.SaveExistingCalls[0]);
             Assert.Equal(("Sheet1", "tpl-performance-a", 2, true), catalog.SaveExistingCalls[1]);
-            Assert.Contains(dialogs.InfoMessages, message => message.IndexOf("覆盖模板完成", StringComparison.Ordinal) >= 0);
+            Assert.Contains(dialogs.InfoMessages, message => message.IndexOf("Overwrite template completed.", StringComparison.Ordinal) >= 0);
         }
 
         [Fact]
@@ -144,9 +165,9 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             InvokeExecuteSaveAsTemplate(controller);
 
-            Assert.Equal("条件A-副本", dialogs.LastSuggestedTemplateName);
+            Assert.Equal("条件A-copy", dialogs.LastSuggestedTemplateName);
             Assert.Equal("条件A-副本2", catalog.LastSavedAsTemplateName);
-            Assert.Contains(dialogs.InfoMessages, message => message.IndexOf("另存模板完成", StringComparison.Ordinal) >= 0);
+            Assert.Contains(dialogs.InfoMessages, message => message.IndexOf("Save as template completed.", StringComparison.Ordinal) >= 0);
         }
 
         private static object CreateController(

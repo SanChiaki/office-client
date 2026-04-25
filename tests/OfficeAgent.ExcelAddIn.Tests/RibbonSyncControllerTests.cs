@@ -20,7 +20,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
         {
             var controller = CreateController(new FakeSystemConnector(), new FakeWorksheetMetadataStore(), new FakeDialogService(), () => "Sheet1");
 
-            Assert.Equal("先选择项目", ReadActiveProjectDisplayName(controller));
+            Assert.Equal("Select project", ReadActiveProjectDisplayName(controller));
         }
 
         [Fact]
@@ -264,7 +264,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Equal(5, metadataStore.LastSavedBinding.HeaderStartRow);
             Assert.Equal(2, metadataStore.LastSavedBinding.HeaderRowCount);
             Assert.Equal(9, metadataStore.LastSavedBinding.DataStartRow);
-            Assert.Contains(dialogService.InfoMessages, message => message.Contains("初始化当前表完成"));
+            Assert.Contains(dialogService.InfoMessages, message => message.IndexOf("Initialize sheet completed.", StringComparison.Ordinal) >= 0);
         }
 
         [Fact]
@@ -408,7 +408,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
 
             InvokeRefresh(controller);
 
-            Assert.Equal("先选择项目", ReadActiveProjectDisplayName(controller));
+            Assert.Equal("Select project", ReadActiveProjectDisplayName(controller));
             Assert.Equal(string.Empty, ReadActiveProjectId(controller));
         }
 
@@ -429,7 +429,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
             InvokeRefresh(controller);
 
             Assert.Equal(string.Empty, ReadActiveProjectId(controller));
-            Assert.Equal("先选择项目", ReadActiveProjectDisplayName(controller));
+            Assert.Equal("Select project", ReadActiveProjectDisplayName(controller));
         }
 
         [Fact]
@@ -457,7 +457,7 @@ namespace OfficeAgent.ExcelAddIn.Tests
             InvokeRefreshForSheet(controller, "ISDP_Setting");
 
             Assert.Equal(string.Empty, ReadActiveProjectId(controller));
-            Assert.Equal("先选择项目", ReadActiveProjectDisplayName(controller));
+            Assert.Equal("Select project", ReadActiveProjectDisplayName(controller));
         }
 
         [Fact]
@@ -500,6 +500,21 @@ namespace OfficeAgent.ExcelAddIn.Tests
             Assert.Equal(
                 "project-2",
                 InvokeFormatProjectDropDownLabel(ReadActiveProjectId(controller), ReadActiveProjectDisplayName(controller)));
+        }
+
+        [Fact]
+        public void RibbonSyncControllerRoutesDownloadAndUploadStatusMessagesThroughHostLocalizedStrings()
+        {
+            var controllerText = File.ReadAllText(ResolveRepositoryPath(
+                "src",
+                "OfficeAgent.ExcelAddIn",
+                "RibbonSyncController.cs"));
+
+            Assert.Contains("LocalizeSyncOperationName(", controllerText, StringComparison.Ordinal);
+            Assert.Contains("FormatDownloadCompletedMessage(", controllerText, StringComparison.Ordinal);
+            Assert.Contains("FormatUploadNoChangesMessage(", controllerText, StringComparison.Ordinal);
+            Assert.Contains("FormatUploadCompletedMessage(", controllerText, StringComparison.Ordinal);
+            Assert.DoesNotContain("没有可提交的单元格。", controllerText, StringComparison.Ordinal);
         }
 
         private static object CreateController(
@@ -710,6 +725,19 @@ namespace OfficeAgent.ExcelAddIn.Tests
                     "bin",
                     "Debug",
                     "OfficeAgent.ExcelAddIn.dll"));
+        }
+
+        private static string ResolveRepositoryPath(params string[] segments)
+        {
+            return Path.GetFullPath(Path.Combine(new[]
+            {
+                AppContext.BaseDirectory,
+                "..",
+                "..",
+                "..",
+                "..",
+                "..",
+            }.Concat(segments).ToArray()));
         }
 
         private static string InvokeFormatProjectDropDownLabel(string projectId, string displayName)

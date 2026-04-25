@@ -6,13 +6,12 @@ using OfficeAgent.Core.Models;
 using OfficeAgent.Core.Services;
 using OfficeAgent.Core.Sync;
 using OfficeAgent.ExcelAddIn.Dialogs;
+using OfficeAgent.ExcelAddIn.Localization;
 
 namespace OfficeAgent.ExcelAddIn
 {
     internal sealed class RibbonSyncController
     {
-        private const string DefaultProjectDisplayName = "先选择项目";
-
         private readonly IWorksheetMetadataStore metadataStore;
         private readonly WorksheetSyncService worksheetSyncService;
         private readonly Func<string> activeSheetNameProvider;
@@ -81,7 +80,7 @@ namespace OfficeAgent.ExcelAddIn
             this.dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             this.authenticationLoginAction = authenticationLoginAction;
 
-            ActiveProjectDisplayName = DefaultProjectDisplayName;
+            ActiveProjectDisplayName = GetStrings().ProjectDropDownPlaceholderText;
             ActiveProjectId = string.Empty;
             ActiveSystemKey = string.Empty;
         }
@@ -205,7 +204,7 @@ namespace OfficeAgent.ExcelAddIn
                     ProjectId = ActiveProjectId,
                     DisplayName = ActiveProjectDisplayName,
                 });
-                dialogService.ShowInfo("初始化当前表完成。");
+                dialogService.ShowInfo(GetStrings().InitializeCurrentSheetCompletedMessage);
             }
             catch (AuthenticationRequiredException ex)
             {
@@ -226,9 +225,10 @@ namespace OfficeAgent.ExcelAddIn
 
             try
             {
+                var strings = GetStrings();
                 var plan = preparePlan(EnsureExecutionService());
                 if (!dialogService.ConfirmDownload(
-                        plan.OperationName,
+                        strings.LocalizeSyncOperationName(plan.OperationName),
                         ActiveProjectDisplayName,
                         plan.Rows?.Count ?? 0,
                         CountDownloadFields(plan),
@@ -238,8 +238,10 @@ namespace OfficeAgent.ExcelAddIn
                 }
 
                 executionService.ExecuteDownload(plan);
-                dialogService.ShowInfo(
-                    $"{plan.OperationName}完成。\r\n记录数：{plan.Rows?.Count ?? 0}\r\n字段数：{CountDownloadFields(plan)}");
+                dialogService.ShowInfo(strings.FormatDownloadCompletedMessage(
+                    plan.OperationName,
+                    plan.Rows?.Count ?? 0,
+                    CountDownloadFields(plan)));
             }
             catch (AuthenticationRequiredException ex)
             {
@@ -260,21 +262,22 @@ namespace OfficeAgent.ExcelAddIn
 
             try
             {
+                var strings = GetStrings();
                 var plan = preparePlan(EnsureExecutionService());
                 var preview = plan.Preview ?? new SyncOperationPreview();
                 if (preview.Changes.Length == 0)
                 {
-                    dialogService.ShowInfo($"{plan.OperationName}没有可提交的单元格。");
+                    dialogService.ShowInfo(strings.FormatUploadNoChangesMessage(plan.OperationName));
                     return;
                 }
 
-                if (!dialogService.ConfirmUpload(plan.OperationName, ActiveProjectDisplayName, preview))
+                if (!dialogService.ConfirmUpload(strings.LocalizeSyncOperationName(plan.OperationName), ActiveProjectDisplayName, preview))
                 {
                     return;
                 }
 
                 executionService.ExecuteUpload(plan);
-                dialogService.ShowInfo($"{plan.OperationName}完成。\r\n提交单元格数：{preview.Changes.Length}");
+                dialogService.ShowInfo(strings.FormatUploadCompletedMessage(plan.OperationName, preview.Changes.Length));
             }
             catch (AuthenticationRequiredException ex)
             {
@@ -293,7 +296,7 @@ namespace OfficeAgent.ExcelAddIn
                 return true;
             }
 
-            dialogService.ShowWarning("请先选择项目。");
+            dialogService.ShowWarning(GetStrings().ProjectSelectionRequiredMessage);
             return false;
         }
 
@@ -311,8 +314,13 @@ namespace OfficeAgent.ExcelAddIn
         {
             ActiveProjectId = string.Empty;
             ActiveSystemKey = string.Empty;
-            ActiveProjectDisplayName = DefaultProjectDisplayName;
+            ActiveProjectDisplayName = GetStrings().ProjectDropDownPlaceholderText;
             OnActiveProjectChanged();
+        }
+
+        private static HostLocalizedStrings GetStrings()
+        {
+            return Globals.ThisAddIn?.HostLocalizedStrings ?? HostLocalizedStrings.ForLocale("en");
         }
 
         private void OnActiveProjectChanged()
