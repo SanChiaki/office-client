@@ -79,7 +79,10 @@
 - Click `初始化当前表` on a sheet that already contains business cells and confirm only `ISDP_Setting` changes; the business area should remain untouched.
 - Click `部分下载` and `部分上传` and confirm each action uses a native Office/WinForms confirmation dialog instead of the task pane.
 - Confirm the Ribbon includes a dedicated `模板` group with `应用模板`, `保存模板`, and `另存模板`.
-- Confirm the `下载` and `上传` controls are rendered in separate Ribbon groups, that the download group only shows `部分下载`, the upload group only shows `部分上传`, and that there is no `全量下载`, `全量上传`, or `增量上传` button.
+- Confirm all Ribbon buttons display Office built-in icons that match their action semantics, with each button using the large icon-above-label layout.
+- Confirm the `ISDP AI` group button is labeled `Open`.
+- Confirm the Ribbon includes one `数据同步` group containing `部分下载` and `部分上传`, and that there is no `全量下载`, `全量上传`, or `增量上传` button.
+- Confirm the Ribbon includes a `帮助` group with `文档` and `关于`; `文档` opens `https://github.com/SanChiaki/OfficeAgent` in the default browser, and `关于` shows version and build information.
 - In the same project, save two different local templates and confirm `应用模板` can list both.
 - Apply one template and confirm `TemplateBindings` updates to the selected template while `SheetBindings` / `SheetFieldMappings` are expanded into the current sheet.
 - Manually edit `ISDP_Setting` field mapping text after applying a template, click `保存模板`, then reapply that template and confirm the edited mapping is preserved.

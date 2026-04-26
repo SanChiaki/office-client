@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -17,6 +20,7 @@ namespace OfficeAgent.ExcelAddIn
         private const string ProjectDropDownPlaceholderText = "先选择项目";
         private const string ProjectDropDownPlaceholderTag = "__no_project__";
         private const string SyntheticProjectDropDownTagPrefix = "__display__:";
+        private const string DocumentationUrl = "https://github.com/SanChiaki/OfficeAgent";
 
         private static readonly string[] StickyNoProjectTexts =
         {
@@ -52,6 +56,68 @@ namespace OfficeAgent.ExcelAddIn
         private void LoginButton_Click(object sender, RibbonControlEventArgs e)
         {
             BeginLoginFlow(refreshProjectsAfterSuccess: true);
+        }
+
+        private void DocumentationButton_Click(object sender, RibbonControlEventArgs e)
+        {
+            try
+            {
+                OpenUrlInDefaultBrowser(DocumentationUrl);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "无法打开文档页面。\r\n" + ex.Message,
+                    "ISDP",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void AboutButton_Click(object sender, RibbonControlEventArgs e)
+        {
+            MessageBox.Show(CreateAboutMessage(), "关于 ISDP", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private static void OpenUrlInDefaultBrowser(string url)
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true,
+            });
+        }
+
+        private static string CreateAboutMessage()
+        {
+            var assembly = typeof(AgentRibbon).Assembly;
+            var assemblyVersion = assembly.GetName().Version?.ToString() ?? "未知";
+
+            return "OfficeAgent Excel Add-in\r\n" +
+                "版本号: " + VersionInfo.AppVersion + "\r\n" +
+                "程序集版本: " + assemblyVersion + "\r\n" +
+                "构建配置: " + GetBuildConfiguration() + "\r\n" +
+                "构建时间: " + GetAssemblyBuildTime(assembly);
+        }
+
+        private static string GetAssemblyBuildTime(Assembly assembly)
+        {
+            var location = assembly.Location;
+            if (string.IsNullOrWhiteSpace(location) || !File.Exists(location))
+            {
+                return "未知";
+            }
+
+            return File.GetLastWriteTime(location).ToString("yyyy-MM-dd HH:mm:ss");
+        }
+
+        private static string GetBuildConfiguration()
+        {
+#if DEBUG
+            return "Debug";
+#else
+            return "Release";
+#endif
         }
 
         internal async void BeginLoginFlow(bool refreshProjectsAfterSuccess)
